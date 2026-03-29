@@ -296,13 +296,31 @@ export default function FabricacaoScreen() {
   const insets = useSafeAreaInsets();
 
   const fab = useFabricacao({
-    autoAvancar: false,
+    autoAvancar: true,
     vibrarAlerta: true,
     onDentroTolerancia: () => {},
     onExcessoTolerancia: () => {},
     onIngredienteFinalizado: () => {},
     onTodosIngredientesFinalizados: () => {
       Alert.alert('Fabricacao', 'Todos os ingredientes foram pesados!');
+    },
+    onMisturaFinalizada: () => {
+      Alert.alert('Mistura Concluida', 'A mistura foi finalizada. Deseja encerrar a fabricacao?', [
+        { text: 'Nao', style: 'cancel' },
+        {
+          text: 'Sim, Finalizar',
+          onPress: async () => {
+            try {
+              await fab.finalizar();
+              Alert.alert('Sucesso', 'Fabricacao finalizada com sucesso.', [
+                { text: 'OK', onPress: () => router.back() },
+              ]);
+            } catch {
+              Alert.alert('Erro', 'Nao foi possivel finalizar.');
+            }
+          },
+        },
+      ]);
     },
   });
 
@@ -322,6 +340,11 @@ export default function FabricacaoScreen() {
   const [selectedOperadorPa, setSelectedOperadorPa] = useState<string>('');
   const [loadingOperadores, setLoadingOperadores] = useState(false);
 
+  // Trato selection
+  const [tratos, setTratos] = useState<{ numero: number; horario: string }[]>([]);
+  const [selectedTrato, setSelectedTrato] = useState<number | null>(null);
+  const [loadingTratos, setLoadingTratos] = useState(false);
+
   // Load operators on mount
   useEffect(() => {
     if (!fazenda_id) return;
@@ -340,6 +363,26 @@ export default function FabricacaoScreen() {
           setOperadores(data as OperadorOption[]);
         }
         setLoadingOperadores(false);
+      });
+    return () => { cancelled = true; };
+  }, [fazenda_id]);
+
+  // Load tratos on mount
+  useEffect(() => {
+    if (!fazenda_id) return;
+    let cancelled = false;
+    setLoadingTratos(true);
+    dataService.query('vet_auto_tratos', { fazenda_id, ativo: true }, { orderBy: 'numero', ascending: true })
+      .then((data) => {
+        if (cancelled) return;
+        setTratos((data || []).map((t: any) => ({
+          numero: t.numero,
+          horario: t.horario ?? '',
+        })));
+        setLoadingTratos(false);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadingTratos(false);
       });
     return () => { cancelled = true; };
   }, [fazenda_id]);
@@ -424,14 +467,15 @@ export default function FabricacaoScreen() {
         receita.id,
         vagao.codigo,
         receita.total_kg,
-        undefined,
+        selectedTrato ?? undefined,
         tipoUso,
         selectedOperadorPa || null,
+        selectedOperadorPa || null, // usuario_id = operador selecionado
       );
     } catch (error) {
       Alert.alert('Erro', 'Nao foi possivel iniciar a fabricacao.');
     }
-  }, [selectedReceita, selectedVagao, fab, tipoUso, selectedOperadorPa, fazenda_id]);
+  }, [selectedReceita, selectedVagao, fab, tipoUso, selectedOperadorPa, selectedTrato, fazenda_id]);
 
   const handleProximoIngrediente = useCallback(() => {
     if (fab.ingredienteAtual) {
@@ -659,6 +703,49 @@ export default function FabricacaoScreen() {
                           styles.selectorChipSub,
                           selectedOperadorPa === op.id && { color: 'rgba(255,255,255,0.7)' },
                         ]}>{op.tipo_usuario === 'operador_pa' ? 'Op. Pa' : op.tipo_usuario}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </Animated.View>
+
+            {/* Trato selector */}
+            <Animated.View entering={FadeInDown.delay(500).springify()}>
+              <Text style={styles.inputLabel}>Numero do Trato</Text>
+              {loadingTratos ? (
+                <ActivityIndicator size="small" color={Colors.primary} style={{ alignSelf: 'flex-start', marginVertical: Spacing.sm }} />
+              ) : tratos.length === 0 ? (
+                <Text style={styles.operadorEmpty}>Nenhum trato disponivel</Text>
+              ) : (
+                <View style={styles.chipsRow}>
+                  {tratos.map((t) => (
+                    <TouchableOpacity
+                      key={t.numero}
+                      style={[
+                        styles.selectorChip,
+                        selectedTrato === t.numero && styles.chipSelected,
+                        selectedTrato === t.numero && Shadows.sm,
+                      ]}
+                      onPress={() => setSelectedTrato(selectedTrato === t.numero ? null : t.numero)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name="restaurant-outline"
+                        size={16}
+                        color={selectedTrato === t.numero ? Colors.textLight : Colors.textSecondary}
+                      />
+                      <View>
+                        <Text style={[
+                          styles.selectorChipText,
+                          selectedTrato === t.numero && styles.chipTextSelected,
+                        ]}>Trato {t.numero}</Text>
+                        {t.horario ? (
+                          <Text style={[
+                            styles.selectorChipSub,
+                            selectedTrato === t.numero && { color: 'rgba(255,255,255,0.7)' },
+                          ]}>{t.horario}</Text>
+                        ) : null}
                       </View>
                     </TouchableOpacity>
                   ))}

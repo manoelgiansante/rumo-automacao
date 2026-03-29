@@ -13,6 +13,7 @@ import type {
   StatusCarregamento,
   StatusFornecido,
 } from '@/types/automacao';
+import { useHardwareStore } from '@/stores/hardwareStore';
 import type { VetAutoSafePoint } from '@/services/safePointService';
 import { getSafePoints } from '@/services/safePointService';
 
@@ -228,10 +229,10 @@ export const useFornecimentoStore = create<FornecimentoState>()(
         ) ?? null;
 
         // Determine initial status based on what data we have:
-        // - If tagInicial is provided, we already detected the initial tag -> pesando_inicial
+        // - If tagInicial is provided, we already detected the initial tag -> fornecendo
         // - Otherwise start at aguardando_tag_inicial
         const initialStatus: FornecimentoEmAndamento['status'] = tagInicial
-          ? 'pesando_inicial'
+          ? 'fornecendo'
           : 'aguardando_tag_inicial';
 
         const fornecimentoAtual: FornecimentoEmAndamento = {
@@ -346,15 +347,15 @@ export const useFornecimentoStore = create<FornecimentoState>()(
             numero_trato: carregamentoAtivo.numero_trato,
             grupo_safe_point: activeSafePoint?.id ?? null,
             grupo_safe_point_nome: activeSafePoint?.nome ?? null,
-            numero_dispositivo: null,
-            receita_id: null,
+            numero_dispositivo: useHardwareStore.getState().configuracao?.configuracao?.numero_dispositivo ?? null,
+            receita_id: fornecimentoAtual.previsto?.receita_id ?? null,
             flag_rateio: false,
             peso_antigo: null,
             entrada_manual: entradaManual,
             previsto_kg: fornecimentoAtual.previsto?.previsto_kg ?? null,
           };
 
-          const savedData = await dataService.save('vet_auto_fornecidos', {
+          const savedData = await dataService.save('vet_auto_fornecimentos', {
             id: generateId(),
             ...dados,
           });

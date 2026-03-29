@@ -78,6 +78,8 @@ interface FabricacaoState {
     numeroTrato?: number,
     tipoUso?: TipoUsoMisturador,
     operadorPaId?: string | null,
+    usuarioId?: string | null,
+    totalCabeca?: number | null,
   ) => Promise<VetAutoFabricacao>;
   proximoIngrediente: () => void;
   registrarPeso: (pesoFinal: number, flagManual: FlagManual) => Promise<void>;
@@ -155,7 +157,7 @@ export const useFabricacaoStore = create<FabricacaoState>()(
 
       // ── Flow ────────────────────────────────────────────────────────────
 
-      iniciar: async (fazendaId, receitaId, codigoMisturador, totalPrevisto, numeroTrato, tipoUso, operadorPaId) => {
+      iniciar: async (fazendaId, receitaId, codigoMisturador, totalPrevisto, numeroTrato, tipoUso, operadorPaId, usuarioId, totalCabeca) => {
         set({ loading: true, error: null });
         try {
           // Fetch receita and ingredients
@@ -184,7 +186,7 @@ export const useFabricacaoStore = create<FabricacaoState>()(
             fazenda_id: fazendaId,
             lote_fabricacao: gerarLoteFabricacao(),
             receita_id: receitaId,
-            usuario_id: null,
+            usuario_id: usuarioId ?? operadorPaId ?? null,
             operador_pa_id: operadorPaId ?? null,
             codigo_misturador: codigoMisturador,
             numero_lote_animais: null,
@@ -194,7 +196,7 @@ export const useFabricacaoStore = create<FabricacaoState>()(
             hora_fim_fabricacao: null,
             total_kg_mn_fabricada: 0,
             total_kg_mn_previsto: totalPrevisto,
-            total_cabeca: null,
+            total_cabeca: totalCabeca ?? null,
             tipo_uso: tipoUso ?? 'estacionario',
             total_perda_kg: 0,
             total_sobra_carregado_kg: 0,
@@ -277,6 +279,21 @@ export const useFabricacaoStore = create<FabricacaoState>()(
             ? (diferencaKg / ingredienteAtual.pesoPrevisto) * 100
             : 0;
 
+          // Lookup operator name if available
+          let nomeOperador: string | null = null;
+          if (fabricacaoAtiva.operador_pa_id) {
+            try {
+              const { data: opData } = await supabase
+                .from('vet_auto_usuarios')
+                .select('nome')
+                .eq('id', fabricacaoAtiva.operador_pa_id)
+                .maybeSingle();
+              nomeOperador = opData?.nome ?? null;
+            } catch {
+              // ignore lookup error
+            }
+          }
+
           // Save ingredient record
           const ingredienteData: VetAutoFabricacaoIngredienteCreate = {
             fabricacao_id: fabricacaoAtiva.id,
@@ -293,13 +310,13 @@ export const useFabricacaoStore = create<FabricacaoState>()(
             ordem: ingredienteAtual.receitaIngrediente.ordem_batida,
             nome: ingredienteAtual.receitaIngrediente.ingrediente?.nome ?? '',
             tolerancia: ingredienteAtual.receitaIngrediente.tolerancia,
-            codigo_operador: null,
-            nome_operador: null,
+            codigo_operador: fabricacaoAtiva.operador_pa_id ?? null,
+            nome_operador: nomeOperador,
             peso_inicial: pesoInicialIngrediente,
             peso_final: pesoFinal,
             flag_manual: flagManual,
-            flag_automation: false,
-            flag_batchbox: false,
+            flag_automation: flagManual === 'troca_automatica',
+            flag_batchbox: fabricacaoAtiva.flag_batchbox ?? false,
           };
 
           await dataService.save('vet_auto_fabricacao_ingredientes', {
@@ -353,17 +370,31 @@ export const useFabricacaoStore = create<FabricacaoState>()(
       },
 
       finalizar: async () => {
-        const { fabricacaoAtiva, pesoAcumulado, pesoAtual } = get();
+        const { fabricacaoAtiva, pesoAcumulado, pesoAtual, ingredientes } = get();
         if (!fabricacaoAtiva) return;
 
         set({ loadingSalvar: true, error: null });
         try {
           const totalFabricado = pesoAtual > 0 ? pesoAtual : pesoAcumulado;
 
+          // Calculate total_perda_kg: sum of negative differences (where fabricado < previsto)
+          const totalPerdaKg = ingredientes.reduce((sum, ing) => {
+            if (ing.diferencaKg !== null && ing.diferencaKg < 0) {
+              return sum + Math.abs(ing.diferencaKg);
+            }
+            return sum;
+          }, 0);
+
+          // Calculate total_sobra_carregado_kg: remaining weight if above a small threshold
+          const SOBRA_THRESHOLD = 0.5; // kg
+          const totalSobraCarregadoKg = pesoAtual > SOBRA_THRESHOLD ? pesoAtual : 0;
+
           await dataService.update('vet_auto_fabricacoes', fabricacaoAtiva.id, {
             status: 'processado' as StatusFabricacao,
             hora_fim_fabricacao: new Date().toISOString(),
             total_kg_mn_fabricada: totalFabricado,
+            total_perda_kg: totalPerdaKg,
+            total_sobra_carregado_kg: totalSobraCarregadoKg,
           });
           get().limpar();
         } catch (error) {

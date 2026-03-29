@@ -8,8 +8,10 @@ import { OfflineBanner } from '@/components/automacao/OfflineBanner';
 
 export default function AutomacaoLayout() {
   useEffect(() => {
-    offlineService.initDatabase();
-    connectivityService.start();
+    (async () => {
+      await offlineService.initDatabase();
+      connectivityService.start();
+    })();
     return () => connectivityService.stop();
   }, []);
 
