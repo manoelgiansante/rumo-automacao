@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { dataService } from '@/services/dataService';
-import { generateId } from '@/services/offlineService';
+import { generateId, getLocal } from '@/services/offlineService';
 
 // ============================================
 // Types
@@ -246,32 +246,43 @@ export async function getFornecimentosDia(
 ): Promise<FornecimentoComDetalhes[]> {
   const dataFiltro = data || getHoje();
 
-  const { data: carregamentos, error: cError } = await supabase
-    .from('vet_auto_carregamentos')
-    .select('id')
-    .eq('fazenda_id', fazenda_id)
-    .eq('data_registro', dataFiltro);
+  try {
+    const { data: carregamentos, error: cError } = await supabase
+      .from('vet_auto_carregamentos')
+      .select('id')
+      .eq('fazenda_id', fazenda_id)
+      .eq('data_registro', dataFiltro);
 
-  if (cError) throw new Error(`Erro ao buscar carregamentos: ${cError.message}`);
+    if (!cError && carregamentos) {
+      const ids = carregamentos.map((c) => c.id);
+      if (ids.length === 0) return [];
 
-  const ids = (carregamentos ?? []).map((c) => c.id);
+      const { data: result, error } = await supabase
+        .from('vet_auto_fornecimentos')
+        .select(`
+          *,
+          curral_rfid:vet_auto_currais_rfid!curral_rfid_id(
+            id, tag_inicial, tag_final,
+            curral:vet_auto_currais!curral_id(id, codigo, nome)
+          ),
+          receita:vet_auto_receitas!receita_id(id, nome)
+        `)
+        .in('carregamento_id', ids)
+        .order('created_at', { ascending: true });
+
+      if (!error && result) {
+        return result as FornecimentoComDetalhes[];
+      }
+    }
+  } catch (e) {
+    // Offline - fall back to local
+  }
+  // Fallback: local SQLite (no joins, but functional)
+  const localCarregamentos = await getLocal('vet_auto_carregamentos', { fazenda_id, data_registro: dataFiltro });
+  const ids = (localCarregamentos as any[]).map((c: any) => c.id);
   if (ids.length === 0) return [];
-
-  const { data: result, error } = await supabase
-    .from('vet_auto_fornecimentos')
-    .select(`
-      *,
-      curral_rfid:vet_auto_currais_rfid!curral_rfid_id(
-        id, tag_inicial, tag_final,
-        curral:vet_auto_currais!curral_id(id, codigo, nome)
-      ),
-      receita:vet_auto_receitas!receita_id(id, nome)
-    `)
-    .in('carregamento_id', ids)
-    .order('created_at', { ascending: true });
-
-  if (error) throw new Error(`Erro ao buscar fornecimentos do dia: ${error.message}`);
-  return (result ?? []) as FornecimentoComDetalhes[];
+  const localFornecimentos = await getLocal('vet_auto_fornecimentos', {});
+  return (localFornecimentos as any[]).filter((f: any) => ids.includes(f.carregamento_id)) as unknown as FornecimentoComDetalhes[];
 }
 
 /**
@@ -282,29 +293,40 @@ export async function getPrevistoVsRealizado(
   data?: string
 ): Promise<PrevistoVsRealizado[]> {
   const dataFiltro = data || getHoje();
+  let previsoes: any[] | null = null;
 
-  // Buscar previsoes do dia
-  const { data: previsoes, error: prevError } = await supabase
-    .from('vet_auto_previsoes')
-    .select(`
-      id,
-      curral_rfid_id,
-      trato_id,
-      receita_id,
-      previsto_kg,
-      realizado_kg,
-      curral_rfid:vet_auto_currais_rfid!curral_rfid_id(
+  try {
+    const { data: result, error: prevError } = await supabase
+      .from('vet_auto_previsoes')
+      .select(`
         id,
-        curral:vet_auto_currais!curral_id(id, codigo, nome)
-      ),
-      receita:vet_auto_receitas!receita_id(id, nome)
-    `)
-    .eq('fazenda_id', fazenda_id)
-    .eq('data', dataFiltro);
+        curral_rfid_id,
+        trato_id,
+        receita_id,
+        previsto_kg,
+        realizado_kg,
+        curral_rfid:vet_auto_currais_rfid!curral_rfid_id(
+          id,
+          curral:vet_auto_currais!curral_id(id, codigo, nome)
+        ),
+        receita:vet_auto_receitas!receita_id(id, nome)
+      `)
+      .eq('fazenda_id', fazenda_id)
+      .eq('data', dataFiltro);
 
-  if (prevError) throw new Error(`Erro ao buscar previsoes: ${prevError.message}`);
+    if (!prevError && result) {
+      previsoes = result;
+    }
+  } catch (e) {
+    // Offline - fall back to local
+  }
 
-  return (previsoes ?? []).map((p) => {
+  if (!previsoes) {
+    const local = await getLocal('vet_auto_previsoes', { fazenda_id, data: dataFiltro });
+    previsoes = local as any[];
+  }
+
+  return (previsoes ?? []).map((p: any) => {
     const curralData = p.curral_rfid as unknown as {
       curral?: { id: string; codigo: string; nome: string | null };
     };
@@ -356,28 +378,37 @@ export async function registrarDescarte(
 export async function getCarregamentoAtivo(
   misturador_id: string
 ): Promise<CarregamentoComDetalhes | null> {
-  const { data, error } = await supabase
-    .from('vet_auto_carregamentos')
-    .select(`
-      *,
-      misturador:vet_auto_misturadores!misturador_id(id, nome, numero),
-      detalhes:vet_auto_carregamento_detalhes!carregamento_id(*),
-      fornecimentos:vet_auto_fornecimentos!carregamento_id(
+  try {
+    const { data, error } = await supabase
+      .from('vet_auto_carregamentos')
+      .select(`
         *,
-        curral_rfid:vet_auto_currais_rfid!curral_rfid_id(
-          id, tag_inicial, tag_final,
-          curral:vet_auto_currais!curral_id(id, codigo, nome)
-        ),
-        receita:vet_auto_receitas!receita_id(id, nome)
-      )
-    `)
-    .eq('misturador_id', misturador_id)
-    .eq('status', 'em_andamento')
-    .order('created_at', { ascending: false })
-    .maybeSingle();
+        misturador:vet_auto_misturadores!misturador_id(id, nome, numero),
+        detalhes:vet_auto_carregamento_detalhes!carregamento_id(*),
+        fornecimentos:vet_auto_fornecimentos!carregamento_id(
+          *,
+          curral_rfid:vet_auto_currais_rfid!curral_rfid_id(
+            id, tag_inicial, tag_final,
+            curral:vet_auto_currais!curral_id(id, codigo, nome)
+          ),
+          receita:vet_auto_receitas!receita_id(id, nome)
+        )
+      `)
+      .eq('misturador_id', misturador_id)
+      .eq('status', 'em_andamento')
+      .order('created_at', { ascending: false })
+      .maybeSingle();
 
-  if (error) throw new Error(`Erro ao buscar carregamento ativo: ${error.message}`);
-  return data as CarregamentoComDetalhes | null;
+    if (!error && data) {
+      return data as CarregamentoComDetalhes;
+    }
+  } catch (e) {
+    // Offline - fall back to local
+  }
+  // Fallback: local SQLite (no joins, but functional)
+  const local = await getLocal('vet_auto_carregamentos', { misturador_id });
+  const active = (local as any[]).filter((r: any) => r.status === 'em_andamento');
+  return (active.length > 0 ? active[0] : null) as CarregamentoComDetalhes | null;
 }
 
 /**
@@ -388,19 +419,32 @@ export async function identificarCurralPorTag(
   fazenda_id: string,
   tag: string
 ): Promise<CurralIdentificado | null> {
-  const { data: currais, error } = await supabase
-    .from('vet_auto_currais_rfid')
-    .select(`
-      id,
-      tag_inicial,
-      tag_final,
-      linha,
-      curral:vet_auto_currais!curral_id(id, codigo, nome)
-    `)
-    .eq('fazenda_id', fazenda_id)
-    .eq('ativo', true);
+  let currais: any[] | null = null;
 
-  if (error) throw new Error(`Erro ao buscar currais RFID: ${error.message}`);
+  try {
+    const { data, error } = await supabase
+      .from('vet_auto_currais_rfid')
+      .select(`
+        id,
+        tag_inicial,
+        tag_final,
+        linha,
+        curral:vet_auto_currais!curral_id(id, codigo, nome)
+      `)
+      .eq('fazenda_id', fazenda_id)
+      .eq('ativo', true);
+
+    if (!error && data) {
+      currais = data;
+    }
+  } catch (e) {
+    // Offline - fall back to local
+  }
+
+  if (!currais) {
+    const local = await getLocal('vet_auto_currais_rfid', { fazenda_id, ativo: true });
+    currais = local as any[];
+  }
 
   // Buscar curral cuja tag esteja dentro do range tag_inicial <= tag <= tag_final
   const tagNormalizada = tag.trim().toUpperCase();

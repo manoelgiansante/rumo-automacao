@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { dataService } from '@/services/dataService';
-import { generateId } from '@/services/offlineService';
+import { generateId, getLocal } from '@/services/offlineService';
 
 // ============================================
 // Types
@@ -198,21 +198,29 @@ export async function getFabricacoesDia(
 ): Promise<FabricacaoComDetalhes[]> {
   const dataFiltro = data || getHoje();
 
-  const { data: result, error } = await supabase
-    .from('vet_auto_fabricacoes')
-    .select(`
-      *,
-      receita:vet_auto_receitas!receita_id(id, nome),
-      misturador:vet_auto_misturadores!misturador_id(id, nome, numero),
-      ingredientes:vet_auto_fabricacao_ingredientes!fabricacao_id(*)
-    `)
-    .eq('fazenda_id', fazenda_id)
-    .eq('data_registro', dataFiltro)
-    .order('numero_trato', { ascending: true })
-    .order('created_at', { ascending: true });
+  try {
+    const { data: result, error } = await supabase
+      .from('vet_auto_fabricacoes')
+      .select(`
+        *,
+        receita:vet_auto_receitas!receita_id(id, nome),
+        misturador:vet_auto_misturadores!misturador_id(id, nome, numero),
+        ingredientes:vet_auto_fabricacao_ingredientes!fabricacao_id(*)
+      `)
+      .eq('fazenda_id', fazenda_id)
+      .eq('data_registro', dataFiltro)
+      .order('numero_trato', { ascending: true })
+      .order('created_at', { ascending: true });
 
-  if (error) throw new Error(`Erro ao buscar fabricacoes do dia: ${error.message}`);
-  return (result ?? []) as FabricacaoComDetalhes[];
+    if (!error && result) {
+      return result as FabricacaoComDetalhes[];
+    }
+  } catch (e) {
+    // Offline - fall back to local
+  }
+  // Fallback: local SQLite (no joins, but functional)
+  const local = await getLocal('vet_auto_fabricacoes', { fazenda_id, data_registro: dataFiltro });
+  return local as unknown as FabricacaoComDetalhes[];
 }
 
 /**
@@ -221,21 +229,30 @@ export async function getFabricacoesDia(
 export async function getFabricacaoAtiva(
   misturador_id: string
 ): Promise<FabricacaoComDetalhes | null> {
-  const { data, error } = await supabase
-    .from('vet_auto_fabricacoes')
-    .select(`
-      *,
-      receita:vet_auto_receitas!receita_id(id, nome),
-      misturador:vet_auto_misturadores!misturador_id(id, nome, numero),
-      ingredientes:vet_auto_fabricacao_ingredientes!fabricacao_id(*)
-    `)
-    .eq('misturador_id', misturador_id)
-    .in('status', ['espera', 'processando'])
-    .order('created_at', { ascending: false })
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from('vet_auto_fabricacoes')
+      .select(`
+        *,
+        receita:vet_auto_receitas!receita_id(id, nome),
+        misturador:vet_auto_misturadores!misturador_id(id, nome, numero),
+        ingredientes:vet_auto_fabricacao_ingredientes!fabricacao_id(*)
+      `)
+      .eq('misturador_id', misturador_id)
+      .in('status', ['espera', 'processando'])
+      .order('created_at', { ascending: false })
+      .maybeSingle();
 
-  if (error) throw new Error(`Erro ao buscar fabricacao ativa: ${error.message}`);
-  return data as FabricacaoComDetalhes | null;
+    if (!error && data) {
+      return data as FabricacaoComDetalhes;
+    }
+  } catch (e) {
+    // Offline - fall back to local
+  }
+  // Fallback: local SQLite (no joins, but functional)
+  const local = await getLocal('vet_auto_fabricacoes', { misturador_id });
+  const active = local.filter((r: any) => r.status === 'espera' || r.status === 'processando');
+  return (active.length > 0 ? active[0] : null) as FabricacaoComDetalhes | null;
 }
 
 /**
@@ -246,20 +263,32 @@ export async function getResumoFabricacaoDia(
   data?: string
 ): Promise<ResumoFabricacaoDia[]> {
   const dataFiltro = data || getHoje();
+  let fabricacoes: any[] | null = null;
 
-  const { data: fabricacoes, error } = await supabase
-    .from('vet_auto_fabricacoes')
-    .select(`
-      receita_id,
-      numero_trato,
-      total_kg_mn_fabricada,
-      receita:vet_auto_receitas!receita_id(id, nome)
-    `)
-    .eq('fazenda_id', fazenda_id)
-    .eq('data_registro', dataFiltro)
-    .eq('status', 'processado');
+  try {
+    const { data: result, error } = await supabase
+      .from('vet_auto_fabricacoes')
+      .select(`
+        receita_id,
+        numero_trato,
+        total_kg_mn_fabricada,
+        receita:vet_auto_receitas!receita_id(id, nome)
+      `)
+      .eq('fazenda_id', fazenda_id)
+      .eq('data_registro', dataFiltro)
+      .eq('status', 'processado');
 
-  if (error) throw new Error(`Erro ao buscar resumo de fabricacao: ${error.message}`);
+    if (!error && result) {
+      fabricacoes = result;
+    }
+  } catch (e) {
+    // Offline - fall back to local
+  }
+
+  if (!fabricacoes) {
+    const local = await getLocal('vet_auto_fabricacoes', { fazenda_id, data_registro: dataFiltro });
+    fabricacoes = (local as any[]).filter((r: any) => r.status === 'processado');
+  }
 
   const agrupado = new Map<string, ResumoFabricacaoDia>();
 
@@ -320,15 +349,24 @@ export async function registrarSobra(
 export async function getFabricacoesComSobra(
   fazenda_id: string
 ): Promise<FabricacaoComDetalhes[]> {
-  const { data, error } = await supabase
-    .from('vet_auto_fabricacoes')
-    .select('*, receita:vet_auto_receitas!receita_id(id, nome)')
-    .eq('fazenda_id', fazenda_id)
-    .eq('status', 'processado')
-    .gt('total_sobra_carregado_kg', 0)
-    .order('created_at', { ascending: false });
-  if (error) throw new Error(`Erro ao buscar fabricacoes com sobra: ${error.message}`);
-  return (data ?? []) as FabricacaoComDetalhes[];
+  try {
+    const { data, error } = await supabase
+      .from('vet_auto_fabricacoes')
+      .select('*, receita:vet_auto_receitas!receita_id(id, nome)')
+      .eq('fazenda_id', fazenda_id)
+      .eq('status', 'processado')
+      .gt('total_sobra_carregado_kg', 0)
+      .order('created_at', { ascending: false });
+    if (!error && data) {
+      return data as FabricacaoComDetalhes[];
+    }
+  } catch (e) {
+    // Offline - fall back to local
+  }
+  const local = await getLocal('vet_auto_fabricacoes', { fazenda_id });
+  return (local as any[]).filter(
+    (r: any) => r.status === 'processado' && (r.total_sobra_carregado_kg ?? 0) > 0,
+  ) as unknown as FabricacaoComDetalhes[];
 }
 
 /**

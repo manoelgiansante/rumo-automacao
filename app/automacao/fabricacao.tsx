@@ -29,6 +29,7 @@ import { useFabricacao } from '@/hooks/useFabricacao';
 import type { IngredienteFabricacao } from '@/stores/fabricacaoStore';
 import { useAutomacaoStore } from '@/stores/automacaoStore';
 import { supabase } from '@/lib/supabase';
+import { dataService } from '@/services/dataService';
 import type { TipoUsoMisturador } from '@/types/automacao';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -343,17 +344,42 @@ export default function FabricacaoScreen() {
     return () => { cancelled = true; };
   }, [fazenda_id]);
 
-  // Mock data - replace with real data from stores
-  const receitas: ReceitaOption[] = [
-    { id: 'r1', nome: 'Racao Confinamento 22%', tipo: 'concentrado', total_kg: 5000 },
-    { id: 'r2', nome: 'Racao Terminacao 18%', tipo: 'volumoso', total_kg: 8000 },
-    { id: 'r3', nome: 'Racao Adaptacao 25%', tipo: 'concentrado', total_kg: 3000 },
-  ];
+  // Receitas e vagoes loaded from Supabase
+  const [receitas, setReceitas] = useState<ReceitaOption[]>([]);
+  const [vagoes, setVagoes] = useState<VagaoOption[]>([]);
 
-  const vagoes: VagaoOption[] = [
-    { id: 'v1', nome: 'Vagao 01', codigo: 1, capacidade_kg: 10000 },
-    { id: 'v2', nome: 'Vagao 02', codigo: 2, capacidade_kg: 8000 },
-  ];
+  useEffect(() => {
+    if (!fazenda_id) return;
+    let cancelled = false;
+
+    // Load receitas
+    dataService.query('vet_auto_receitas', { fazenda_id, status: 'ativo' })
+      .then(data => {
+        if (cancelled) return;
+        setReceitas((data || []).map((r: any) => ({
+          id: r.id,
+          nome: r.nome,
+          tipo: r.tipo_receita ?? 'concentrado',
+          total_kg: r.imn_por_cabeca_dia ?? 0,
+        })));
+      })
+      .catch(() => {});
+
+    // Load misturadores/vagoes
+    dataService.query('vet_auto_misturadores', { fazenda_id })
+      .then(data => {
+        if (cancelled) return;
+        setVagoes((data || []).map((v: any) => ({
+          id: v.id,
+          nome: v.nome,
+          codigo: v.numero ?? 0,
+          capacidade_kg: v.capacidade_kg ?? 0,
+        })));
+      })
+      .catch(() => {});
+
+    return () => { cancelled = true; };
+  }, [fazenda_id]);
 
   const isAtiva = fab.status === 'processando';
   const isEspera = fab.status === 'espera' || !fab.fabricacaoAtiva;

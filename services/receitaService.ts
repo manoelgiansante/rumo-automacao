@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { dataService } from '@/services/dataService';
-import { generateId } from '@/services/offlineService';
+import { generateId, getLocal } from '@/services/offlineService';
 
 // ============================================
 // Types
@@ -97,20 +97,32 @@ export async function getReceitas(
 export async function getReceitaComIngredientes(
   id: string
 ): Promise<ReceitaComIngredientes | null> {
-  const { data, error } = await supabase
-    .from('vet_auto_receitas')
-    .select(`
-      *,
-      ingredientes:vet_auto_receita_ingredientes!receita_id(
+  try {
+    const { data, error } = await supabase
+      .from('vet_auto_receitas')
+      .select(`
         *,
-        ingrediente:vet_auto_ingredientes!ingrediente_id(id, nome, tipo, materia_seca, custo_kg)
-      )
-    `)
-    .eq('id', id)
-    .maybeSingle();
+        ingredientes:vet_auto_receita_ingredientes!receita_id(
+          *,
+          ingrediente:vet_auto_ingredientes!ingrediente_id(id, nome, tipo, materia_seca, custo_kg)
+        )
+      `)
+      .eq('id', id)
+      .maybeSingle();
 
-  if (error) throw new Error(`Erro ao buscar receita com ingredientes: ${error.message}`);
-  return data as ReceitaComIngredientes | null;
+    if (!error && data) {
+      return data as ReceitaComIngredientes;
+    }
+  } catch (e) {
+    // Offline - fall back to local
+  }
+  // Fallback: local SQLite (no joins, but functional)
+  const localReceitas = await getLocal('vet_auto_receitas', { id });
+  if (localReceitas.length === 0) return null;
+  const receita = localReceitas[0] as any;
+  const localIngredientes = await getLocal('vet_auto_receita_ingredientes', { receita_id: id });
+  receita.ingredientes = localIngredientes;
+  return receita as ReceitaComIngredientes;
 }
 
 /**
