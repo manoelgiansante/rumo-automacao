@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { Colors, Spacing, FontSize, BorderRadius, Shadows, FontWeight } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useAutomacaoStore } from '@/stores/automacaoStore';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
@@ -200,8 +201,8 @@ export default function RelatoriosScreen() {
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // TODO: pegar fazenda_id do contexto/store global
-  const fazenda_id = '';
+  const { fazendaAtiva } = useAutomacaoStore();
+  const fazenda_id = fazendaAtiva?.fazenda_id ?? '';
 
   // Real data state
   const [resumoStats, setResumoStats] = useState<ResumoStats>({

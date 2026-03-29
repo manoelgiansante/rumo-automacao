@@ -26,6 +26,7 @@ import type {
   StatusOrdemProducao,
 } from '@/services/ordemProducaoService';
 import { supabase } from '@/lib/supabase';
+import { useAutomacaoStore } from '@/stores/automacaoStore';
 
 // ============================================
 // Types
@@ -62,8 +63,8 @@ export default function OrdemProducaoScreen() {
   const [dataProducao, setDataProducao] = useState(new Date().toISOString().split('T')[0]);
   const [saving, setSaving] = useState(false);
 
-  // TODO: pegar fazenda_id do contexto/store global
-  const fazenda_id = '';
+  const { fazendaAtiva } = useAutomacaoStore();
+  const fazenda_id = fazendaAtiva?.fazenda_id ?? '';
 
   const carregarOrdens = useCallback(async () => {
     if (!fazenda_id) {

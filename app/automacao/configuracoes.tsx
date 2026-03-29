@@ -177,12 +177,14 @@ function SliderRow({
 }
 
 // ============================================
-// Helper: get fazenda_id from automacaoStore or hardwareStore
+// Helper: get fazenda_id from automacaoStore
 // ============================================
 function useFazendaId(): string | null {
+  const fazendaAtiva = useAutomacaoStore((s) => s.fazendaAtiva);
   const carregamentoAtivo = useAutomacaoStore((s) => s.carregamentoAtivo);
   const configuracao = useHardwareStore((s) => s.configuracao);
   return (
+    fazendaAtiva?.fazenda_id ??
     carregamentoAtivo?.fazenda_id ??
     configuracao?.configuracao?.fazenda_id ??
     null

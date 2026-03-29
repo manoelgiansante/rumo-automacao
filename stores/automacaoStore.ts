@@ -18,6 +18,10 @@ import type {
 // ─── State interface ─────────────────────────────────────────────────────────
 
 interface AutomacaoState {
+  // Fazenda ativa
+  fazendaAtiva: { fazenda_id: string } | null;
+  setFazendaAtiva: (fazenda: { fazenda_id: string }) => void;
+
   // Data
   fabricacaoAtiva: VetAutoFabricacao | null;
   carregamentoAtivo: VetAutoCarregamento | null;
@@ -64,6 +68,8 @@ export const useAutomacaoStore = create<AutomacaoState>()(
   persist(
     (set, get) => ({
       // Initial state
+      fazendaAtiva: null,
+      setFazendaAtiva: (fazenda) => set({ fazendaAtiva: fazenda }),
       fabricacaoAtiva: null,
       carregamentoAtivo: null,
       fornecimentosDia: [],
@@ -327,6 +333,7 @@ export const useAutomacaoStore = create<AutomacaoState>()(
 
       limpar: () => {
         set({
+          fazendaAtiva: null,
           fabricacaoAtiva: null,
           carregamentoAtivo: null,
           fornecimentosDia: [],
@@ -344,6 +351,7 @@ export const useAutomacaoStore = create<AutomacaoState>()(
       name: 'rumo-automacao-store',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
+        fazendaAtiva: state.fazendaAtiva,
         fabricacaoAtiva: state.fabricacaoAtiva,
         carregamentoAtivo: state.carregamentoAtivo,
         dataAtual: state.dataAtual,

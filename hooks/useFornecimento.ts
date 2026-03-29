@@ -9,6 +9,7 @@ import { useHardware, type UseHardwareOptions } from './useHardware';
 import { useFornecimentoStore, type FornecimentoEmAndamento } from '@/stores/fornecimentoStore';
 import type { LeituraPeso, LeituraRfid } from '@/services/hardware';
 import type { VetAutoCurral, VetAutoCarregamento, VetAutoFornecido } from '@/types/automacao';
+import { registrarLeitura as registrarLeituraSafePoint } from '@/services/safePointService';
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 
@@ -82,6 +83,27 @@ export function useFornecimento(options: UseFornecimentoOptions = {}) {
     if (!currentStore.carregamentoAtivo) return;
 
     const tag = leitura.tag;
+
+    // Check if it's a safe point tag first
+    const safePoint = currentStore.identificarSafePoint(tag);
+    if (safePoint && currentStore.carregamentoAtivo) {
+      // Register safe point reading with current weight
+      const pesoAtual = ultimoPesoEstavelRef.current > 0
+        ? ultimoPesoEstavelRef.current
+        : pesoDisplay;
+      registrarLeituraSafePoint(
+        safePoint.id,
+        currentStore.carregamentoAtivo.id,
+        pesoAtual,
+        'automatico',
+        null,
+        pesoAtual,
+      ).catch((err) => {
+        console.error('Erro ao registrar leitura safe point:', err);
+      });
+      return;
+    }
+
     const curral = currentStore.identificarCurral(tag);
 
     if (!curral) {
@@ -302,6 +324,11 @@ export function useFornecimento(options: UseFornecimentoOptions = {}) {
 
     // Actions - Curral
     identificarCurral: store.identificarCurral,
+
+    // Safe Points
+    safePoints: store.safePoints,
+    activeSafePoint: store.activeSafePoint,
+    carregarSafePoints: store.carregarSafePoints,
 
     // Actions - Data
     fetchCurraisRfid: store.fetchCurraisRfid,

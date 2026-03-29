@@ -125,6 +125,17 @@ export async function registrarLeitura(
 export async function calcularRateio(
   carregamento_id: string
 ): Promise<RateioSafePoint[]> {
+  // Get total weight from carregamento
+  const { data: carregamento, error: carregamentoError } = await supabase
+    .from('vet_auto_carregamentos')
+    .select('total_carregado')
+    .eq('id', carregamento_id)
+    .single();
+
+  if (carregamentoError) throw new Error(`Erro ao buscar carregamento: ${carregamentoError.message}`);
+
+  const totalCarregado = carregamento?.total_carregado ?? 0;
+
   const { data: leituras, error } = await supabase
     .from('vet_auto_safe_point_leituras')
     .select(`
@@ -151,22 +162,22 @@ export async function calcularRateio(
     });
   }
 
-  // Calcular total para distribuicao proporcional
-  const totalPeso = Array.from(leiturasPorSP.values()).reduce(
+  // Calcular total dos pesos nos safe points para distribuicao proporcional
+  const totalPesoSafePoints = Array.from(leiturasPorSP.values()).reduce(
     (sum, sp) => sum + sp.peso_kg,
     0
   );
 
-  if (totalPeso === 0) return [];
+  if (totalPesoSafePoints === 0) return [];
 
   return Array.from(leiturasPorSP.entries()).map(([spId, spData]) => {
-    const percentual = (spData.peso_kg / totalPeso) * 100;
+    const percentual = (spData.peso_kg / totalPesoSafePoints) * 100;
     return {
       safe_point_id: spId,
       safe_point_nome: spData.nome,
       peso_kg: spData.peso_kg,
       percentual: Math.round(percentual * 100) / 100,
-      peso_rateado_kg: Math.round(spData.peso_kg * 100) / 100,
+      peso_rateado_kg: Math.round((totalCarregado * (spData.peso_kg / totalPesoSafePoints)) * 100) / 100,
     };
   });
 }

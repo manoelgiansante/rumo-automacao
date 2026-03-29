@@ -11,6 +11,8 @@ import type {
   StatusCarregamento,
   StatusFornecido,
 } from '@/types/automacao';
+import type { VetAutoSafePoint } from '@/services/safePointService';
+import { getSafePoints } from '@/services/safePointService';
 
 // ─── Derived types ───────────────────────────────────────────────────────────
 
@@ -57,6 +59,12 @@ interface FornecimentoState {
   // Previstos do dia para o trato atual
   previstosTrato: VetAutoPrevisto[];
 
+  // Safe points da fazenda
+  safePoints: VetAutoSafePoint[];
+
+  // Safe point group ativo (quando tag de safe point e lida)
+  activeSafePoint: VetAutoSafePoint | null;
+
   // Totais
   totalFornecido: number;
   totalPrevisto: number;
@@ -77,6 +85,10 @@ interface FornecimentoState {
   iniciarFornecimento: (curral: VetAutoCurral, pesoInicial: number, tagInicial: string | null) => void;
   registrarFornecimento: (pesoFinal: number, tagFinal: string | null, entradaManual?: boolean) => Promise<VetAutoFornecido>;
   cancelarFornecimentoAtual: () => void;
+
+  // Actions - Safe Points
+  carregarSafePoints: (fazendaId: string) => Promise<void>;
+  identificarSafePoint: (tag: string) => VetAutoSafePoint | null;
 
   // Actions - Data
   fetchCurraisRfid: (fazendaId: string) => Promise<void>;
@@ -103,6 +115,8 @@ export const useFornecimentoStore = create<FornecimentoState>()(
       tagFinal: null,
       curraisRfid: [],
       previstosTrato: [],
+      safePoints: [],
+      activeSafePoint: null,
       totalFornecido: 0,
       totalPrevisto: 0,
       pesoRestante: 0,
@@ -123,11 +137,12 @@ export const useFornecimentoStore = create<FornecimentoState>()(
 
           if (error) throw error;
 
-          // Fetch currais and previstos
+          // Fetch currais, previstos, and safe points
           await Promise.all([
             get().fetchCurraisRfid(carregamento.fazenda_id),
             get().fetchPrevistosTrato(carregamento.fazenda_id, carregamento.numero_trato, carregamento.data),
             get().fetchFornecimentosCarregamento(carregamento.id),
+            get().carregarSafePoints(carregamento.fazenda_id),
           ]);
 
           const previstos = get().previstosTrato;
@@ -241,7 +256,7 @@ export const useFornecimentoStore = create<FornecimentoState>()(
       },
 
       registrarFornecimento: async (pesoFinal: number, tagFinal: string | null, entradaManual = false) => {
-        const { fornecimentoAtual, carregamentoAtivo, pesoInicial, tagInicial, fornecimentos } = get();
+        const { fornecimentoAtual, carregamentoAtivo, pesoInicial, tagInicial, fornecimentos, activeSafePoint } = get();
         if (!fornecimentoAtual || !carregamentoAtivo) {
           throw new Error('Nenhum fornecimento em andamento');
         }
@@ -267,8 +282,8 @@ export const useFornecimentoStore = create<FornecimentoState>()(
             usuario_id: null,
             misturador_vagao_id: carregamentoAtivo.misturador_vagao_id,
             numero_trato: carregamentoAtivo.numero_trato,
-            grupo_safe_point: null,
-            grupo_safe_point_nome: null,
+            grupo_safe_point: activeSafePoint?.id ?? null,
+            grupo_safe_point_nome: activeSafePoint?.nome ?? null,
             numero_dispositivo: null,
             receita_id: null,
             flag_rateio: false,
@@ -336,6 +351,27 @@ export const useFornecimentoStore = create<FornecimentoState>()(
           tagInicial: null,
           tagFinal: null,
         });
+      },
+
+      // ── Safe Points ─────────────────────────────────────────────────────
+
+      carregarSafePoints: async (fazendaId: string) => {
+        try {
+          const safePoints = await getSafePoints(fazendaId);
+          set({ safePoints });
+        } catch (error) {
+          console.error('Erro ao carregar safe points:', error);
+        }
+      },
+
+      identificarSafePoint: (tag: string): VetAutoSafePoint | null => {
+        const { safePoints } = get();
+        const tagNorm = tag.toLowerCase();
+        const sp = safePoints.find((s) => s.tag.toLowerCase() === tagNorm) ?? null;
+        if (sp) {
+          set({ activeSafePoint: sp });
+        }
+        return sp;
       },
 
       // ── Data ────────────────────────────────────────────────────────────
@@ -407,6 +443,8 @@ export const useFornecimentoStore = create<FornecimentoState>()(
           tagFinal: null,
           curraisRfid: [],
           previstosTrato: [],
+          safePoints: [],
+          activeSafePoint: null,
           totalFornecido: 0,
           totalPrevisto: 0,
           pesoRestante: 0,

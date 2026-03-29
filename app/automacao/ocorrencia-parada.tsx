@@ -21,6 +21,7 @@ import {
   getParadasDia,
 } from '@/services/ocorrenciaParadaService';
 import type { OcorrenciaParadaComItens } from '@/services/ocorrenciaParadaService';
+import { useAutomacaoStore } from '@/stores/automacaoStore';
 
 // ============================================
 // Main Screen
@@ -37,8 +38,8 @@ export default function OcorrenciaParadaScreen() {
   const [observacao, setObservacao] = useState('');
   const [showForm, setShowForm] = useState(false);
 
-  // TODO: pegar do contexto/store global
-  const fazenda_id = '';
+  const { fazendaAtiva } = useAutomacaoStore();
+  const fazenda_id = fazendaAtiva?.fazenda_id ?? '';
   const operadorNome = 'Operador';
   const receitaAtual = '';
   const pesoBalanca = 0;

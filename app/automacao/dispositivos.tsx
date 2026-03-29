@@ -96,9 +96,11 @@ const DB_TO_TIPO: Record<string, TipoDispositivo> = {
 // Helper: get fazenda_id
 // ============================================
 function useFazendaId(): string | null {
+  const fazendaAtiva = useAutomacaoStore((s) => s.fazendaAtiva);
   const carregamentoAtivo = useAutomacaoStore((s) => s.carregamentoAtivo);
   const configuracao = useHardwareStore((s) => s.configuracao);
   return (
+    fazendaAtiva?.fazenda_id ??
     carregamentoAtivo?.fazenda_id ??
     configuracao?.configuracao?.fazenda_id ??
     null

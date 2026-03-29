@@ -170,6 +170,7 @@ export async function addDetalheCarregamento(
 /**
  * Registra fornecimento em um curral (CORE)
  * Auto-calcula fornecido_kg = peso_inicial - peso_final
+ * When flag_rateio is true, uses peso_rateado_kg instead of the raw calculation
  */
 export async function registrarFornecimento(
   carregamento_id: string,
@@ -179,9 +180,17 @@ export async function registrarFornecimento(
   peso_inicial: number,
   peso_final: number,
   receita_id: string | null,
-  trato_numero: number | null
+  trato_numero: number | null,
+  options?: {
+    flag_rateio?: boolean;
+    peso_rateado_kg?: number;
+    entrada_manual?: boolean;
+  }
 ): Promise<VetAutoFornecimento> {
-  const fornecido_kg = peso_inicial - peso_final;
+  const flag_rateio = options?.flag_rateio ?? false;
+  const fornecido_kg = flag_rateio && options?.peso_rateado_kg != null
+    ? options.peso_rateado_kg
+    : peso_inicial - peso_final;
 
   const { data, error } = await supabase
     .from('vet_auto_fornecimentos')
@@ -197,8 +206,8 @@ export async function registrarFornecimento(
       trato_numero: trato_numero ?? null,
       hora_inicio: new Date().toISOString(),
       hora_final: new Date().toISOString(),
-      flag_rateio: false,
-      entrada_manual: false,
+      flag_rateio,
+      entrada_manual: options?.entrada_manual ?? false,
     })
     .select()
     .single();

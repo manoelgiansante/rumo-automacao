@@ -330,7 +330,7 @@ export const INTERMEC_COMMANDS = {
     return `attribute ants=${antennas}\r\n`;
   },
   /** Start event-based reading (tags pushed as events) */
-  READ_EVENT: 'read report=event\r\n',
+  READ_EVENT: 'read report=event\n',
   /** Synchronous single read */
   READ_SYNC: 'read\r\n',
   /** Stop reading */

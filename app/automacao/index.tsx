@@ -242,6 +242,7 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const {
+    fazendaAtiva,
     resumoDiario,
     fabricacaoAtiva,
     carregamentoAtivo,
@@ -250,6 +251,8 @@ export default function DashboardScreen() {
     error,
     carregarDadosDia,
   } = useAutomacaoStore();
+
+  const fazendaId = fazendaAtiva?.fazenda_id;
 
   // Mock data for demonstration - replace with real store data
   const fornecidoHoje = resumoDiario?.total_fornecido_kg ?? 12500;
@@ -268,15 +271,15 @@ export default function DashboardScreen() {
   ];
 
   const onRefresh = useCallback(async () => {
+    if (!fazendaId) return;
     setRefreshing(true);
     try {
-      // Replace 'fazenda-id' with actual fazenda_id from auth
-      await carregarDadosDia('fazenda-id');
+      await carregarDadosDia(fazendaId);
     } catch {
       // Error handled in store
     }
     setRefreshing(false);
-  }, [carregarDadosDia]);
+  }, [carregarDadosDia, fazendaId]);
 
   return (
     <View style={styles.container}>

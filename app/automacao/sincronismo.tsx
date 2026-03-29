@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { Colors, Spacing, FontSize, BorderRadius, Shadows, FontWeight } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useAutomacaoStore } from '@/stores/automacaoStore';
 import type { VetAutoSyncLog, SyncEntidade } from '@/services/sincronismoService';
 
 // ============================================
@@ -66,8 +67,8 @@ export default function SincronismoScreen() {
   const [syncLogs, setSyncLogs] = useState<SyncLogEntry[]>([]);
   const [isOnline, setIsOnline] = useState(true);
 
-  // TODO: pegar fazenda_id do contexto/store global
-  const fazenda_id = '';
+  const { fazendaAtiva } = useAutomacaoStore();
+  const fazenda_id = fazendaAtiva?.fazenda_id ?? '';
 
   const carregarDados = useCallback(async () => {
     if (!fazenda_id) {

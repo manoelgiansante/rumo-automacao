@@ -17,6 +17,7 @@ import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { Colors, Spacing, FontSize, BorderRadius, Shadows, FontWeight } from '@/constants/theme';
 import { getOperadoresAtivos, autenticarOperador } from '@/services/usuarioService';
 import type { VetAutoUsuario, UsuarioAutenticado } from '@/services/usuarioService';
+import { useAutomacaoStore } from '@/stores/automacaoStore';
 
 // ============================================
 // Main Screen
@@ -30,8 +31,8 @@ export default function LoginOperadorScreen() {
   const [loadingList, setLoadingList] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
 
-  // TODO: pegar fazenda_id do contexto/store global
-  const fazenda_id = '';
+  const { fazendaAtiva } = useAutomacaoStore();
+  const fazenda_id = fazendaAtiva?.fazenda_id ?? '';
 
   const carregarOperadores = useCallback(async () => {
     if (!fazenda_id) {
