@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase';
+import { dataService } from '@/services/dataService';
+import { generateId } from '@/services/offlineService';
 
 // ============================================
 // Types
@@ -121,22 +123,19 @@ export async function createCarregamento(
   misturador_id: string,
   peso_balancao: number | null
 ): Promise<VetAutoCarregamento> {
-  const { data, error } = await supabase
-    .from('vet_auto_carregamentos')
-    .insert({
-      fazenda_id,
-      trato_id: trato_id || null,
-      misturador_id,
-      data_registro: getHoje(),
-      status: 'em_andamento' as StatusCarregamento,
-      peso_balancao: peso_balancao ?? null,
-      hora_saida: new Date().toISOString(),
-    })
-    .select()
-    .single();
+  const record = {
+    id: generateId(),
+    fazenda_id,
+    trato_id: trato_id || null,
+    misturador_id,
+    data_registro: getHoje(),
+    status: 'em_andamento' as StatusCarregamento,
+    peso_balancao: peso_balancao ?? null,
+    hora_saida: new Date().toISOString(),
+  };
 
-  if (error) throw new Error(`Erro ao criar carregamento: ${error.message}`);
-  return data as VetAutoCarregamento;
+  const data = await dataService.save('vet_auto_carregamentos', record);
+  return data as unknown as VetAutoCarregamento;
 }
 
 /**
@@ -149,22 +148,19 @@ export async function addDetalheCarregamento(
   lote_fabricacao: string | null,
   receita_id: string | null
 ): Promise<VetAutoDetalheCarregamento> {
-  const { data, error } = await supabase
-    .from('vet_auto_carregamento_detalhes')
-    .insert({
-      carregamento_id,
-      peso_inicial,
-      peso_final,
-      lote_fabricacao: lote_fabricacao || null,
-      receita_id: receita_id || null,
-      hora_inicial: new Date().toISOString(),
-      hora_final: new Date().toISOString(),
-    })
-    .select()
-    .single();
+  const record = {
+    id: generateId(),
+    carregamento_id,
+    peso_inicial,
+    peso_final,
+    lote_fabricacao: lote_fabricacao || null,
+    receita_id: receita_id || null,
+    hora_inicial: new Date().toISOString(),
+    hora_final: new Date().toISOString(),
+  };
 
-  if (error) throw new Error(`Erro ao adicionar detalhe do carregamento: ${error.message}`);
-  return data as VetAutoDetalheCarregamento;
+  const data = await dataService.save('vet_auto_carregamento_detalhes', record);
+  return data as unknown as VetAutoDetalheCarregamento;
 }
 
 /**
@@ -193,29 +189,26 @@ export async function registrarFornecimento(
     ? options.peso_rateado_kg
     : peso_inicial - peso_final;
 
-  const { data, error } = await supabase
-    .from('vet_auto_fornecimentos')
-    .insert({
-      carregamento_id,
-      curral_rfid_id: curral_rfid_id || null,
-      tag_inicial: tag_inicial || null,
-      tag_final: tag_final || null,
-      peso_inicial,
-      peso_final,
-      fornecido_kg,
-      receita_id: receita_id || null,
-      trato_numero: trato_numero ?? null,
-      hora_inicio: new Date().toISOString(),
-      hora_final: new Date().toISOString(),
-      flag_rateio,
-      entrada_manual: options?.entrada_manual ?? false,
-      previsto_kg: options?.previsto_kg ?? null,
-    })
-    .select()
-    .single();
+  const record = {
+    id: generateId(),
+    carregamento_id,
+    curral_rfid_id: curral_rfid_id || null,
+    tag_inicial: tag_inicial || null,
+    tag_final: tag_final || null,
+    peso_inicial,
+    peso_final,
+    fornecido_kg,
+    receita_id: receita_id || null,
+    trato_numero: trato_numero ?? null,
+    hora_inicio: new Date().toISOString(),
+    hora_final: new Date().toISOString(),
+    flag_rateio,
+    entrada_manual: options?.entrada_manual ?? false,
+    previsto_kg: options?.previsto_kg ?? null,
+  };
 
-  if (error) throw new Error(`Erro ao registrar fornecimento: ${error.message}`);
-  return data as VetAutoFornecimento;
+  const data = await dataService.save('vet_auto_fornecimentos', record);
+  return data as unknown as VetAutoFornecimento;
 }
 
 /**
@@ -226,33 +219,22 @@ export async function finalizarCarregamento(
   peso_balancao_retorno: number | null
 ): Promise<VetAutoCarregamento> {
   // Calcula total carregado somando os fornecimentos
-  const { data: fornecimentos, error: fetchError } = await supabase
-    .from('vet_auto_fornecimentos')
-    .select('fornecido_kg')
-    .eq('carregamento_id', id);
+  const fornecimentos = await dataService.query('vet_auto_fornecimentos', { carregamento_id: id });
 
-  if (fetchError) throw new Error(`Erro ao buscar fornecimentos: ${fetchError.message}`);
-
-  const total_carregado_kg = (fornecimentos ?? []).reduce(
-    (sum, f) => sum + (f.fornecido_kg ?? 0),
+  const total_carregado_kg = fornecimentos.reduce(
+    (sum, f) => sum + ((f.fornecido_kg as number) ?? 0),
     0
   );
 
-  const { data, error } = await supabase
-    .from('vet_auto_carregamentos')
-    .update({
-      status: 'concluido' as StatusCarregamento,
-      total_carregado_kg,
-      peso_balancao_retorno: peso_balancao_retorno ?? null,
-      hora_retorno: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .select()
-    .single();
+  await dataService.update('vet_auto_carregamentos', id, {
+    status: 'concluido' as StatusCarregamento,
+    total_carregado_kg,
+    peso_balancao_retorno: peso_balancao_retorno ?? null,
+    hora_retorno: new Date().toISOString(),
+  });
 
-  if (error) throw new Error(`Erro ao finalizar carregamento: ${error.message}`);
-  return data as VetAutoCarregamento;
+  const data = await dataService.getById('vet_auto_carregamentos', id);
+  return data as unknown as VetAutoCarregamento;
 }
 
 /**
@@ -355,20 +337,17 @@ export async function registrarDescarte(
   motivo: string | null,
   quantidade_kg: number
 ): Promise<VetAutoDescarte> {
-  const { data, error } = await supabase
-    .from('vet_auto_descartes')
-    .insert({
-      tipo,
-      referencia_id,
-      misturador_id: misturador_id || null,
-      motivo: motivo || null,
-      quantidade_kg,
-    })
-    .select()
-    .single();
+  const record = {
+    id: generateId(),
+    tipo,
+    referencia_id,
+    misturador_id: misturador_id || null,
+    motivo: motivo || null,
+    quantidade_kg,
+  };
 
-  if (error) throw new Error(`Erro ao registrar descarte: ${error.message}`);
-  return data as VetAutoDescarte;
+  const data = await dataService.save('vet_auto_descartes', record);
+  return data as unknown as VetAutoDescarte;
 }
 
 /**

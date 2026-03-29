@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase';
+import { dataService } from '@/services/dataService';
+import { generateId } from '@/services/offlineService';
 
 // ============================================
 // Types
@@ -94,27 +96,24 @@ export async function createFabricacao(
   total_cabeca: number,
   fazenda_id?: string
 ): Promise<VetAutoFabricacao> {
-  const { data, error } = await supabase
-    .from('vet_auto_fabricacoes')
-    .insert({
-      fazenda_id: fazenda_id ?? null,
-      receita_id,
-      misturador_id,
-      usuario_id,
-      operador_pa_id: operador_pa_id || null,
-      lote_fabricacao: gerarLoteFabricacao(),
-      numero_trato,
-      total_cabeca,
-      status: 'espera' as StatusFabricacao,
-      data_registro: getHoje(),
-      hora_inicio: new Date().toISOString(),
-      flag_automation: false,
-    })
-    .select()
-    .single();
+  const record = {
+    id: generateId(),
+    fazenda_id: fazenda_id ?? null,
+    receita_id,
+    misturador_id,
+    usuario_id,
+    operador_pa_id: operador_pa_id || null,
+    lote_fabricacao: gerarLoteFabricacao(),
+    numero_trato,
+    total_cabeca,
+    status: 'espera' as StatusFabricacao,
+    data_registro: getHoje(),
+    hora_inicio: new Date().toISOString(),
+    flag_automation: false,
+  };
 
-  if (error) throw new Error(`Erro ao criar fabricacao: ${error.message}`);
-  return data as VetAutoFabricacao;
+  const data = await dataService.save('vet_auto_fabricacoes', record);
+  return data as unknown as VetAutoFabricacao;
 }
 
 /**
@@ -126,22 +125,15 @@ export async function updateFabricacaoStatus(
 ): Promise<VetAutoFabricacao> {
   const updates: Record<string, unknown> = {
     status,
-    updated_at: new Date().toISOString(),
   };
 
   if (status === 'processando') {
     updates.hora_inicio = new Date().toISOString();
   }
 
-  const { data, error } = await supabase
-    .from('vet_auto_fabricacoes')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw new Error(`Erro ao atualizar status da fabricacao: ${error.message}`);
-  return data as VetAutoFabricacao;
+  await dataService.update('vet_auto_fabricacoes', id, updates);
+  const updated = await dataService.getById('vet_auto_fabricacoes', id);
+  return updated as unknown as VetAutoFabricacao;
 }
 
 /**
@@ -161,26 +153,23 @@ export async function addIngredienteFabricado(
     ? total_kg_fabricada - (tolerancia > 0 ? tolerancia : 0)
     : null;
 
-  const { data, error } = await supabase
-    .from('vet_auto_fabricacao_ingredientes')
-    .insert({
-      fabricacao_id,
-      ingrediente_id,
-      peso_inicial,
-      peso_final,
-      total_kg_fabricada,
-      tolerancia,
-      diferenca_kg,
-      ordem,
-      flag_manual: flag_manual || null,
-      hora_inicio: new Date().toISOString(),
-      hora_fim: new Date().toISOString(),
-    })
-    .select()
-    .single();
+  const record = {
+    id: generateId(),
+    fabricacao_id,
+    ingrediente_id,
+    peso_inicial,
+    peso_final,
+    total_kg_fabricada,
+    tolerancia,
+    diferenca_kg,
+    ordem,
+    flag_manual: flag_manual || null,
+    hora_inicio: new Date().toISOString(),
+    hora_fim: new Date().toISOString(),
+  };
 
-  if (error) throw new Error(`Erro ao adicionar ingrediente fabricado: ${error.message}`);
-  return data as VetAutoFabricacaoIngrediente;
+  const data = await dataService.save('vet_auto_fabricacao_ingredientes', record);
+  return data as unknown as VetAutoFabricacaoIngrediente;
 }
 
 /**
@@ -191,20 +180,13 @@ export async function finalizarFabricacao(
   total_kg_fabricada: number,
   hora_fim: string
 ): Promise<VetAutoFabricacao> {
-  const { data, error } = await supabase
-    .from('vet_auto_fabricacoes')
-    .update({
-      status: 'processado' as StatusFabricacao,
-      total_kg_mn_fabricada: total_kg_fabricada,
-      hora_fim,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw new Error(`Erro ao finalizar fabricacao: ${error.message}`);
-  return data as VetAutoFabricacao;
+  await dataService.update('vet_auto_fabricacoes', id, {
+    status: 'processado' as StatusFabricacao,
+    total_kg_mn_fabricada: total_kg_fabricada,
+    hora_fim,
+  });
+  const data = await dataService.getById('vet_auto_fabricacoes', id);
+  return data as unknown as VetAutoFabricacao;
 }
 
 /**
@@ -309,18 +291,11 @@ export async function getResumoFabricacaoDia(
 export async function cancelarFabricacao(
   id: string
 ): Promise<VetAutoFabricacao> {
-  const { data, error } = await supabase
-    .from('vet_auto_fabricacoes')
-    .update({
-      status: 'cancelado' as StatusFabricacao,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw new Error(`Erro ao cancelar fabricacao: ${error.message}`);
-  return data as VetAutoFabricacao;
+  await dataService.update('vet_auto_fabricacoes', id, {
+    status: 'cancelado' as StatusFabricacao,
+  });
+  const data = await dataService.getById('vet_auto_fabricacoes', id);
+  return data as unknown as VetAutoFabricacao;
 }
 
 // ============================================
@@ -334,11 +309,9 @@ export async function registrarSobra(
   fabricacao_id: string,
   sobra_kg: number
 ): Promise<void> {
-  const { error } = await supabase
-    .from('vet_auto_fabricacoes')
-    .update({ total_sobra_carregado_kg: sobra_kg, updated_at: new Date().toISOString() })
-    .eq('id', fabricacao_id);
-  if (error) throw new Error(`Erro ao registrar sobra: ${error.message}`);
+  await dataService.update('vet_auto_fabricacoes', fabricacao_id, {
+    total_sobra_carregado_kg: sobra_kg,
+  });
 }
 
 /**
@@ -366,11 +339,9 @@ export async function vincularSobra(
   sobra_fabricacao_id: string,
   sobra_lote: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from('vet_auto_fabricacoes')
-    .update({ lote_fabricacao_sobra: sobra_lote, updated_at: new Date().toISOString() })
-    .eq('id', nova_fabricacao_id);
-  if (error) throw new Error(`Erro ao vincular sobra: ${error.message}`);
+  await dataService.update('vet_auto_fabricacoes', nova_fabricacao_id, {
+    lote_fabricacao_sobra: sobra_lote,
+  });
 }
 
 /**
@@ -379,9 +350,7 @@ export async function vincularSobra(
 export async function zerarSobra(
   fabricacao_id: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from('vet_auto_fabricacoes')
-    .update({ total_sobra_carregado_kg: 0, updated_at: new Date().toISOString() })
-    .eq('id', fabricacao_id);
-  if (error) throw new Error(`Erro ao zerar sobra: ${error.message}`);
+  await dataService.update('vet_auto_fabricacoes', fabricacao_id, {
+    total_sobra_carregado_kg: 0,
+  });
 }

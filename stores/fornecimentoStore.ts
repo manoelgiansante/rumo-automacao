@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
+import { dataService } from '@/services/dataService';
+import { generateId } from '@/services/offlineService';
 import type {
   VetAutoCarregamento,
   VetAutoFornecido,
@@ -134,12 +136,9 @@ export const useFornecimentoStore = create<FornecimentoState>()(
         set({ loading: true, error: null });
         try {
           // Update carregamento status to fornecendo
-          const { error } = await supabase
-            .from('vet_auto_carregamentos')
-            .update({ status: 'fornecendo' as StatusCarregamento })
-            .eq('id', carregamento.id);
-
-          if (error) throw error;
+          await dataService.update('vet_auto_carregamentos', carregamento.id, {
+            status: 'fornecendo' as StatusCarregamento,
+          });
 
           // Fetch currais, previstos, and safe points
           await Promise.all([
@@ -172,15 +171,10 @@ export const useFornecimentoStore = create<FornecimentoState>()(
 
         set({ loadingSalvar: true, error: null });
         try {
-          const { error } = await supabase
-            .from('vet_auto_carregamentos')
-            .update({
-              status: 'fechado' as StatusCarregamento,
-              peso_balancao_retorno: pesoRetorno,
-            })
-            .eq('id', carregamentoAtivo.id);
-
-          if (error) throw error;
+          await dataService.update('vet_auto_carregamentos', carregamentoAtivo.id, {
+            status: 'fechado' as StatusCarregamento,
+            peso_balancao_retorno: pesoRetorno,
+          });
           get().limpar();
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Erro ao finalizar carregamento';
@@ -195,12 +189,9 @@ export const useFornecimentoStore = create<FornecimentoState>()(
 
         set({ loadingSalvar: true, error: null });
         try {
-          const { error } = await supabase
-            .from('vet_auto_carregamentos')
-            .update({ status: 'cancelado' as StatusCarregamento })
-            .eq('id', carregamentoAtivo.id);
-
-          if (error) throw error;
+          await dataService.update('vet_auto_carregamentos', carregamentoAtivo.id, {
+            status: 'cancelado' as StatusCarregamento,
+          });
           get().limpar();
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Erro ao cancelar carregamento';
@@ -363,22 +354,18 @@ export const useFornecimentoStore = create<FornecimentoState>()(
             previsto_kg: fornecimentoAtual.previsto?.previsto_kg ?? null,
           };
 
-          const { data, error } = await supabase
-            .from('vet_auto_fornecidos')
-            .insert(dados)
-            .select('*, curral:curral_id(*)')
-            .single();
-
-          if (error) throw error;
-          const fornecido = data as VetAutoFornecido;
+          const savedData = await dataService.save('vet_auto_fornecidos', {
+            id: generateId(),
+            ...dados,
+          });
+          const fornecido = savedData as unknown as VetAutoFornecido;
 
           // Update previsto realizado_kg
           if (fornecimentoAtual.previsto) {
             const novoRealizado = (fornecimentoAtual.previsto.realizado_kg ?? 0) + fornecidoKg;
-            await supabase
-              .from('vet_auto_previstos')
-              .update({ realizado_kg: novoRealizado })
-              .eq('id', fornecimentoAtual.previsto.id);
+            await dataService.update('vet_auto_previstos', fornecimentoAtual.previsto.id, {
+              realizado_kg: novoRealizado,
+            });
 
             // Update local previstos
             const previstos = get().previstosTrato.map((p) =>
@@ -450,16 +437,12 @@ export const useFornecimentoStore = create<FornecimentoState>()(
 
       fetchCurraisRfid: async (fazendaId: string) => {
         try {
-          const { data, error } = await supabase
-            .from('vet_auto_currais')
-            .select('*')
-            .eq('fazenda_id', fazendaId)
-            .eq('ativo', true)
-            .order('linha', { ascending: true })
-            .order('ordem_trato', { ascending: true });
-
-          if (error) throw error;
-          set({ curraisRfid: (data ?? []) as VetAutoCurral[] });
+          const data = await dataService.query(
+            'vet_auto_currais',
+            { fazenda_id: fazendaId, ativo: true },
+            { orderBy: 'linha', ascending: true }
+          );
+          set({ curraisRfid: data as unknown as VetAutoCurral[] });
         } catch (error) {
           console.error('Erro ao buscar currais RFID:', error);
         }

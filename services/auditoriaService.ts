@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase';
+import { dataService } from '@/services/dataService';
+import { generateId } from '@/services/offlineService';
 
 // ============================================
 // Types
@@ -39,18 +41,17 @@ export async function logAtividade(
   acao: string,
   detalhes?: Record<string, unknown>
 ): Promise<void> {
-  const { error } = await supabase
-    .from('vet_auto_log_atividades')
-    .insert({
+  try {
+    await dataService.save('vet_auto_log_atividades', {
+      id: generateId(),
       fazenda_id,
       usuario_id,
       usuario_nome,
       acao,
       detalhes: detalhes || null,
     });
-
-  if (error) {
-    console.error(`Erro ao registrar log de atividade: ${error.message}`);
+  } catch (err) {
+    console.error(`Erro ao registrar log de atividade: ${err instanceof Error ? err.message : err}`);
   }
 }
 

@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase';
+import { dataService } from '@/services/dataService';
+import { generateId } from '@/services/offlineService';
 
 // ============================================
 // Types
@@ -53,15 +55,12 @@ export interface RateioSafePoint {
 export async function getSafePoints(
   fazenda_id: string
 ): Promise<VetAutoSafePoint[]> {
-  const { data, error } = await supabase
-    .from('vet_auto_safe_points')
-    .select('*')
-    .eq('fazenda_id', fazenda_id)
-    .eq('ativo', true)
-    .order('nome', { ascending: true });
-
-  if (error) throw new Error(`Erro ao buscar safe points: ${error.message}`);
-  return (data ?? []) as VetAutoSafePoint[];
+  const data = await dataService.query(
+    'vet_auto_safe_points',
+    { fazenda_id, ativo: true },
+    { orderBy: 'nome', ascending: true }
+  );
+  return data as unknown as VetAutoSafePoint[];
 }
 
 /**
@@ -73,20 +72,17 @@ export async function createSafePoint(
   tag: string,
   tipo: TipoSafePoint
 ): Promise<VetAutoSafePoint> {
-  const { data, error } = await supabase
-    .from('vet_auto_safe_points')
-    .insert({
-      fazenda_id,
-      nome,
-      tag,
-      tipo,
-      ativo: true,
-    })
-    .select()
-    .single();
+  const record = {
+    id: generateId(),
+    fazenda_id,
+    nome,
+    tag,
+    tipo,
+    ativo: true,
+  };
 
-  if (error) throw new Error(`Erro ao criar safe point: ${error.message}`);
-  return data as VetAutoSafePoint;
+  const data = await dataService.save('vet_auto_safe_points', record);
+  return data as unknown as VetAutoSafePoint;
 }
 
 /**
@@ -100,22 +96,19 @@ export async function registrarLeitura(
   tara_kg: number | null,
   peso_bruto_kg: number | null
 ): Promise<VetAutoSafePointLeitura> {
-  const { data, error } = await supabase
-    .from('vet_auto_safe_point_leituras')
-    .insert({
-      safe_point_id,
-      carregamento_id,
-      peso_kg,
-      input_type,
-      tara_kg: tara_kg ?? null,
-      peso_bruto_kg: peso_bruto_kg ?? null,
-      data_registro: new Date().toISOString(),
-    })
-    .select()
-    .single();
+  const record = {
+    id: generateId(),
+    safe_point_id,
+    carregamento_id,
+    peso_kg,
+    input_type,
+    tara_kg: tara_kg ?? null,
+    peso_bruto_kg: peso_bruto_kg ?? null,
+    data_registro: new Date().toISOString(),
+  };
 
-  if (error) throw new Error(`Erro ao registrar leitura no safe point: ${error.message}`);
-  return data as VetAutoSafePointLeitura;
+  const data = await dataService.save('vet_auto_safe_point_leituras', record);
+  return data as unknown as VetAutoSafePointLeitura;
 }
 
 /**

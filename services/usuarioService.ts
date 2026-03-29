@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { dataService } from '@/services/dataService';
 
 // ============================================
 // Types
@@ -34,14 +35,12 @@ export interface UsuarioAutenticado {
 export async function getUsuarios(
   fazenda_id: string
 ): Promise<VetAutoUsuario[]> {
-  const { data, error } = await supabase
-    .from('vet_auto_usuarios')
-    .select('*')
-    .eq('fazenda_id', fazenda_id)
-    .order('nome');
-
-  if (error) throw new Error(`Erro ao buscar usuarios: ${error.message}`);
-  return (data ?? []) as VetAutoUsuario[];
+  const data = await dataService.query(
+    'vet_auto_usuarios',
+    { fazenda_id },
+    { orderBy: 'nome', ascending: true }
+  );
+  return data as unknown as VetAutoUsuario[];
 }
 
 /**
@@ -114,18 +113,9 @@ export async function updateUsuario(
   id: string,
   updates: Partial<Pick<VetAutoUsuario, 'nome' | 'login' | 'tipo_usuario' | 'ativo'>>
 ): Promise<VetAutoUsuario> {
-  const { data, error } = await supabase
-    .from('vet_auto_usuarios')
-    .update({
-      ...updates,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw new Error(`Erro ao atualizar usuario: ${error.message}`);
-  return data as VetAutoUsuario;
+  await dataService.update('vet_auto_usuarios', id, { ...updates });
+  const data = await dataService.getById('vet_auto_usuarios', id);
+  return data as unknown as VetAutoUsuario;
 }
 
 /**
@@ -134,13 +124,10 @@ export async function updateUsuario(
 export async function getOperadoresAtivos(
   fazenda_id: string
 ): Promise<VetAutoUsuario[]> {
-  const { data, error } = await supabase
-    .from('vet_auto_usuarios')
-    .select('*')
-    .eq('fazenda_id', fazenda_id)
-    .eq('ativo', true)
-    .order('nome');
-
-  if (error) throw new Error(`Erro ao buscar operadores ativos: ${error.message}`);
-  return (data ?? []) as VetAutoUsuario[];
+  const data = await dataService.query(
+    'vet_auto_usuarios',
+    { fazenda_id, ativo: true },
+    { orderBy: 'nome', ascending: true }
+  );
+  return data as unknown as VetAutoUsuario[];
 }

@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase';
+import { dataService } from '@/services/dataService';
+import { generateId } from '@/services/offlineService';
 
 // ============================================
 // Types
@@ -107,23 +109,20 @@ export async function createPrevisao(
   previsto_kg: number,
   quantidade_cab: number
 ): Promise<VetAutoPrevisao> {
-  const { data: result, error } = await supabase
-    .from('vet_auto_previsoes')
-    .insert({
-      fazenda_id,
-      curral_rfid_id,
-      trato_id,
-      receita_id,
-      data,
-      previsto_kg,
-      quantidade_cab,
-      realizado_kg: 0,
-    })
-    .select()
-    .single();
+  const record = {
+    id: generateId(),
+    fazenda_id,
+    curral_rfid_id,
+    trato_id,
+    receita_id,
+    data,
+    previsto_kg,
+    quantidade_cab,
+    realizado_kg: 0,
+  };
 
-  if (error) throw new Error(`Erro ao criar previsao: ${error.message}`);
-  return result as VetAutoPrevisao;
+  const result = await dataService.save('vet_auto_previsoes', record);
+  return result as unknown as VetAutoPrevisao;
 }
 
 /**
@@ -133,18 +132,9 @@ export async function updateRealizado(
   previsao_id: string,
   realizado_kg: number
 ): Promise<VetAutoPrevisao> {
-  const { data, error } = await supabase
-    .from('vet_auto_previsoes')
-    .update({
-      realizado_kg,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', previsao_id)
-    .select()
-    .single();
-
-  if (error) throw new Error(`Erro ao atualizar realizado: ${error.message}`);
-  return data as VetAutoPrevisao;
+  await dataService.update('vet_auto_previsoes', previsao_id, { realizado_kg });
+  const data = await dataService.getById('vet_auto_previsoes', previsao_id);
+  return data as unknown as VetAutoPrevisao;
 }
 
 /**

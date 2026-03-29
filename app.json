@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "Rumo Automação",
+    "slug": "rumo-automacao",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "rumo-automacao",
+    "userInterfaceStyle": "light",
+    "platforms": ["ios", "android"],
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-secure-store",
+      "@react-native-community/netinfo"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase';
+import { dataService } from '@/services/dataService';
+import { generateId } from '@/services/offlineService';
 
 // ============================================
 // Types
@@ -41,19 +43,16 @@ export async function registrarParada(
   nome: string,
   carregamento_id?: string
 ): Promise<VetAutoOcorrenciaParada> {
-  const { data, error } = await supabase
-    .from('vet_auto_ocorrencia_paradas')
-    .insert({
-      fazenda_id,
-      nome,
-      carregamento_id: carregamento_id || null,
-      data_registro: new Date().toISOString().split('T')[0],
-    })
-    .select()
-    .single();
+  const record = {
+    id: generateId(),
+    fazenda_id,
+    nome,
+    carregamento_id: carregamento_id || null,
+    data_registro: new Date().toISOString().split('T')[0],
+  };
 
-  if (error) throw new Error(`Erro ao registrar parada: ${error.message}`);
-  return data as VetAutoOcorrenciaParada;
+  const data = await dataService.save('vet_auto_ocorrencia_paradas', record);
+  return data as unknown as VetAutoOcorrenciaParada;
 }
 
 /**
@@ -67,22 +66,19 @@ export async function addItemParada(
   receita: string | null,
   peso_balanca: number | null
 ): Promise<VetAutoOcorrenciaParadaItem> {
-  const { data, error } = await supabase
-    .from('vet_auto_ocorrencia_paradas_itens')
-    .insert({
-      ocorrencia_id,
-      nome,
-      observacao,
-      operador,
-      receita,
-      peso_balanca,
-      hora_registro: new Date().toISOString(),
-    })
-    .select()
-    .single();
+  const record = {
+    id: generateId(),
+    ocorrencia_id,
+    nome,
+    observacao,
+    operador,
+    receita,
+    peso_balanca,
+    hora_registro: new Date().toISOString(),
+  };
 
-  if (error) throw new Error(`Erro ao adicionar item de parada: ${error.message}`);
-  return data as VetAutoOcorrenciaParadaItem;
+  const data = await dataService.save('vet_auto_ocorrencia_paradas_itens', record);
+  return data as unknown as VetAutoOcorrenciaParadaItem;
 }
 
 /**

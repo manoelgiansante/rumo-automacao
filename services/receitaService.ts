@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase';
+import { dataService } from '@/services/dataService';
+import { generateId } from '@/services/offlineService';
 
 // ============================================
 // Types
@@ -81,15 +83,12 @@ export interface PesoIngredienteCalculado {
 export async function getReceitas(
   fazenda_id: string
 ): Promise<VetAutoReceita[]> {
-  const { data, error } = await supabase
-    .from('vet_auto_receitas')
-    .select('*')
-    .eq('fazenda_id', fazenda_id)
-    .eq('status', 'ativo')
-    .order('nome', { ascending: true });
-
-  if (error) throw new Error(`Erro ao buscar receitas: ${error.message}`);
-  return (data ?? []) as VetAutoReceita[];
+  const data = await dataService.query(
+    'vet_auto_receitas',
+    { fazenda_id, status: 'ativo' },
+    { orderBy: 'nome', ascending: true }
+  );
+  return data as unknown as VetAutoReceita[];
 }
 
 /**
@@ -120,25 +119,22 @@ export async function getReceitaComIngredientes(
 export async function createReceita(
   receitaData: Omit<VetAutoReceita, 'id' | 'created_at' | 'updated_at'>
 ): Promise<VetAutoReceita> {
-  const { data, error } = await supabase
-    .from('vet_auto_receitas')
-    .insert({
-      fazenda_id: receitaData.fazenda_id,
-      nome: receitaData.nome,
-      codigo_alfa: receitaData.codigo_alfa || null,
-      materia_seca: receitaData.materia_seca ?? null,
-      imn_por_cabeca_dia: receitaData.imn_por_cabeca_dia ?? null,
-      custo_tonelada_mn: receitaData.custo_tonelada_mn ?? null,
-      tempo_mistura: receitaData.tempo_mistura ?? null,
-      tipo_receita: receitaData.tipo_receita || null,
-      perc_tolerancia: receitaData.perc_tolerancia ?? null,
-      status: receitaData.status ?? 'ativo',
-    })
-    .select()
-    .single();
+  const record = {
+    id: generateId(),
+    fazenda_id: receitaData.fazenda_id,
+    nome: receitaData.nome,
+    codigo_alfa: receitaData.codigo_alfa || null,
+    materia_seca: receitaData.materia_seca ?? null,
+    imn_por_cabeca_dia: receitaData.imn_por_cabeca_dia ?? null,
+    custo_tonelada_mn: receitaData.custo_tonelada_mn ?? null,
+    tempo_mistura: receitaData.tempo_mistura ?? null,
+    tipo_receita: receitaData.tipo_receita || null,
+    perc_tolerancia: receitaData.perc_tolerancia ?? null,
+    status: receitaData.status ?? 'ativo',
+  };
 
-  if (error) throw new Error(`Erro ao criar receita: ${error.message}`);
-  return data as VetAutoReceita;
+  const data = await dataService.save('vet_auto_receitas', record);
+  return data as unknown as VetAutoReceita;
 }
 
 /**
@@ -148,18 +144,9 @@ export async function updateReceita(
   id: string,
   updates: Partial<VetAutoReceita>
 ): Promise<VetAutoReceita> {
-  const { data, error } = await supabase
-    .from('vet_auto_receitas')
-    .update({
-      ...updates,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw new Error(`Erro ao atualizar receita: ${error.message}`);
-  return data as VetAutoReceita;
+  await dataService.update('vet_auto_receitas', id, { ...updates });
+  const data = await dataService.getById('vet_auto_receitas', id);
+  return data as unknown as VetAutoReceita;
 }
 
 /**
@@ -173,22 +160,19 @@ export async function addIngredienteReceita(
   tolerancia: number | null,
   ordem_batida: number
 ): Promise<VetAutoReceitaIngrediente> {
-  const { data, error } = await supabase
-    .from('vet_auto_receita_ingredientes')
-    .insert({
-      receita_id,
-      ingrediente_id,
-      percentual_mn,
-      percentual_ms: percentual_ms ?? null,
-      tolerancia: tolerancia ?? null,
-      ordem_batida,
-      automatizado: false,
-    })
-    .select()
-    .single();
+  const record = {
+    id: generateId(),
+    receita_id,
+    ingrediente_id,
+    percentual_mn,
+    percentual_ms: percentual_ms ?? null,
+    tolerancia: tolerancia ?? null,
+    ordem_batida,
+    automatizado: false,
+  };
 
-  if (error) throw new Error(`Erro ao adicionar ingrediente a receita: ${error.message}`);
-  return data as VetAutoReceitaIngrediente;
+  const data = await dataService.save('vet_auto_receita_ingredientes', record);
+  return data as unknown as VetAutoReceitaIngrediente;
 }
 
 /**

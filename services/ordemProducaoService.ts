@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase';
+import { dataService } from '@/services/dataService';
+import { generateId } from '@/services/offlineService';
 
 // ============================================
 // Types
@@ -84,20 +86,17 @@ export async function createOrdem(
   previsto_kg: number,
   data_producao: string
 ): Promise<VetAutoOrdemProducao> {
-  const { data, error } = await supabase
-    .from('vet_auto_ordens_producao')
-    .insert({
-      fazenda_id,
-      receita_id,
-      previsto_kg,
-      data_producao,
-      status: 'aguardando' as StatusOrdemProducao,
-    })
-    .select()
-    .single();
+  const record = {
+    id: generateId(),
+    fazenda_id,
+    receita_id,
+    previsto_kg,
+    data_producao,
+    status: 'aguardando' as StatusOrdemProducao,
+  };
 
-  if (error) throw new Error(`Erro ao criar ordem: ${error.message}`);
-  return data as VetAutoOrdemProducao;
+  const data = await dataService.save('vet_auto_ordens_producao', record);
+  return data as unknown as VetAutoOrdemProducao;
 }
 
 /**
@@ -107,18 +106,9 @@ export async function updateOrdemStatus(
   id: string,
   status: StatusOrdemProducao
 ): Promise<VetAutoOrdemProducao> {
-  const { data, error } = await supabase
-    .from('vet_auto_ordens_producao')
-    .update({
-      status,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw new Error(`Erro ao atualizar status da ordem: ${error.message}`);
-  return data as VetAutoOrdemProducao;
+  await dataService.update('vet_auto_ordens_producao', id, { status });
+  const data = await dataService.getById('vet_auto_ordens_producao', id);
+  return data as unknown as VetAutoOrdemProducao;
 }
 
 /**
@@ -137,17 +127,10 @@ export async function vincularFabricacao(
   ordem_id: string,
   fabricacao_id: string
 ): Promise<VetAutoOrdemProducao> {
-  const { data, error } = await supabase
-    .from('vet_auto_ordens_producao')
-    .update({
-      fabricacao_id,
-      status: 'produzindo' as StatusOrdemProducao,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', ordem_id)
-    .select()
-    .single();
-
-  if (error) throw new Error(`Erro ao vincular fabricacao: ${error.message}`);
-  return data as VetAutoOrdemProducao;
+  await dataService.update('vet_auto_ordens_producao', ordem_id, {
+    fabricacao_id,
+    status: 'produzindo' as StatusOrdemProducao,
+  });
+  const data = await dataService.getById('vet_auto_ordens_producao', ordem_id);
+  return data as unknown as VetAutoOrdemProducao;
 }

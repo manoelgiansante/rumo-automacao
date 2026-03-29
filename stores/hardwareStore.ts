@@ -18,6 +18,7 @@ import {
   ledDisplayService,
 } from '@/services/hardware';
 import { supabase } from '@/lib/supabase';
+import { dataService } from '@/services/dataService';
 
 // ─── State interface ─────────────────────────────────────────────────────────
 
@@ -171,33 +172,17 @@ export const useHardwareStore = create<HardwareState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       // Fetch all config in parallel
-      const [configRes, v10Res, enderecosRes, misturadoresRes] = await Promise.all([
-        supabase
-          .from('vet_auto_configuracoes')
-          .select('*')
-          .eq('fazenda_id', fazendaId)
-          .maybeSingle(),
-        supabase
-          .from('vet_auto_configuracao_v10')
-          .select('*')
-          .eq('fazenda_id', fazendaId)
-          .maybeSingle(),
-        supabase
-          .from('vet_auto_endereco_v10')
-          .select('*')
-          .eq('fazenda_id', fazendaId)
-          .order('misturador', { ascending: true }),
-        supabase
-          .from('vet_auto_configuracoes_misturadores')
-          .select('*')
-          .eq('fazenda_id', fazendaId)
-          .order('posicao', { ascending: true }),
+      const [configResults, v10Results, enderecosResults, misturadoresResults] = await Promise.all([
+        dataService.query('vet_auto_configuracoes', { fazenda_id: fazendaId }, { limit: 1 }),
+        dataService.query('vet_auto_configuracao_v10', { fazenda_id: fazendaId }, { limit: 1 }),
+        dataService.query('vet_auto_endereco_v10', { fazenda_id: fazendaId }, { orderBy: 'misturador', ascending: true }),
+        dataService.query('vet_auto_configuracoes_misturadores', { fazenda_id: fazendaId }, { orderBy: 'posicao', ascending: true }),
       ]);
 
-      const configuracao = configRes.data as VetAutoConfiguracao | null;
-      const configuracaoV10 = v10Res.data as VetAutoConfiguracaoV10 | null;
-      const enderecosV10 = (enderecosRes.data ?? []) as VetAutoEnderecoV10[];
-      const misturadores = (misturadoresRes.data ?? []) as VetAutoConfiguracaoMisturador[];
+      const configuracao = (configResults[0] ?? null) as unknown as VetAutoConfiguracao | null;
+      const configuracaoV10 = (v10Results[0] ?? null) as unknown as VetAutoConfiguracaoV10 | null;
+      const enderecosV10 = enderecosResults as unknown as VetAutoEnderecoV10[];
+      const misturadores = misturadoresResults as unknown as VetAutoConfiguracaoMisturador[];
 
       // Determine connection type
       let tipoConexao: TipoConexao = 'serial';

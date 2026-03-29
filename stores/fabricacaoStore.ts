@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
+import { dataService } from '@/services/dataService';
+import { generateId } from '@/services/offlineService';
 import type {
   VetAutoFabricacao,
   VetAutoFabricacaoCreate,
@@ -203,13 +205,11 @@ export const useFabricacaoStore = create<FabricacaoState>()(
             status: 'processando',
           };
 
-          const { data: fabricacao, error } = await supabase
-            .from('vet_auto_fabricacoes')
-            .insert(fabricacaoData)
-            .select()
-            .single();
+          const fabricacao = await dataService.save('vet_auto_fabricacoes', {
+            id: generateId(),
+            ...fabricacaoData,
+          });
 
-          if (error) throw error;
 
           // For BatchBox mode, skip mixing timer (mixes externally)
           const isBatchbox = (tipoUso ?? 'estacionario') === 'batchbox';
@@ -302,11 +302,10 @@ export const useFabricacaoStore = create<FabricacaoState>()(
             flag_batchbox: false,
           };
 
-          const { error } = await supabase
-            .from('vet_auto_fabricacao_ingredientes')
-            .insert(ingredienteData);
-
-          if (error) throw error;
+          await dataService.save('vet_auto_fabricacao_ingredientes', {
+            id: generateId(),
+            ...ingredienteData,
+          });
 
           // Update local state
           const updatedIngrediente: IngredienteFabricacao = {
@@ -341,15 +340,10 @@ export const useFabricacaoStore = create<FabricacaoState>()(
 
         set({ loadingSalvar: true, error: null });
         try {
-          const { error } = await supabase
-            .from('vet_auto_fabricacoes')
-            .update({
-              status: 'cancelado' as StatusFabricacao,
-              hora_fim_fabricacao: new Date().toISOString(),
-            })
-            .eq('id', fabricacaoAtiva.id);
-
-          if (error) throw error;
+          await dataService.update('vet_auto_fabricacoes', fabricacaoAtiva.id, {
+            status: 'cancelado' as StatusFabricacao,
+            hora_fim_fabricacao: new Date().toISOString(),
+          });
           get().limpar();
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Erro ao cancelar fabricacao';
@@ -366,16 +360,11 @@ export const useFabricacaoStore = create<FabricacaoState>()(
         try {
           const totalFabricado = pesoAtual > 0 ? pesoAtual : pesoAcumulado;
 
-          const { error } = await supabase
-            .from('vet_auto_fabricacoes')
-            .update({
-              status: 'processado' as StatusFabricacao,
-              hora_fim_fabricacao: new Date().toISOString(),
-              total_kg_mn_fabricada: totalFabricado,
-            })
-            .eq('id', fabricacaoAtiva.id);
-
-          if (error) throw error;
+          await dataService.update('vet_auto_fabricacoes', fabricacaoAtiva.id, {
+            status: 'processado' as StatusFabricacao,
+            hora_fim_fabricacao: new Date().toISOString(),
+            total_kg_mn_fabricada: totalFabricado,
+          });
           get().limpar();
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Erro ao finalizar fabricacao';

@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
+import { dataService } from '@/services/dataService';
+import { generateId } from '@/services/offlineService';
 import type {
   VetAutoFabricacao,
   VetAutoCarregamento,
@@ -86,18 +88,13 @@ export const useAutomacaoStore = create<AutomacaoState>()(
       iniciarFabricacao: async (dados: VetAutoFabricacaoCreate) => {
         set({ loadingSalvar: true, error: null });
         try {
-          const { data, error } = await supabase
-            .from('vet_auto_fabricacoes')
-            .insert({
-              ...dados,
-              status: 'processando' as StatusFabricacao,
-              hora_inicio_fabricacao: new Date().toISOString(),
-            })
-            .select()
-            .single();
-
-          if (error) throw error;
-          const fabricacao = data as VetAutoFabricacao;
+          const data = await dataService.save('vet_auto_fabricacoes', {
+            id: generateId(),
+            ...dados,
+            status: 'processando' as StatusFabricacao,
+            hora_inicio_fabricacao: new Date().toISOString(),
+          });
+          const fabricacao = data as unknown as VetAutoFabricacao;
           set({ fabricacaoAtiva: fabricacao, loadingSalvar: false });
           return fabricacao;
         } catch (error) {
@@ -110,16 +107,11 @@ export const useAutomacaoStore = create<AutomacaoState>()(
       finalizarFabricacao: async (id: string, totalFabricado: number) => {
         set({ loadingSalvar: true, error: null });
         try {
-          const { error } = await supabase
-            .from('vet_auto_fabricacoes')
-            .update({
-              status: 'processado' as StatusFabricacao,
-              hora_fim_fabricacao: new Date().toISOString(),
-              total_kg_mn_fabricada: totalFabricado,
-            })
-            .eq('id', id);
-
-          if (error) throw error;
+          await dataService.update('vet_auto_fabricacoes', id, {
+            status: 'processado' as StatusFabricacao,
+            hora_fim_fabricacao: new Date().toISOString(),
+            total_kg_mn_fabricada: totalFabricado,
+          });
           set({ fabricacaoAtiva: null, loadingSalvar: false });
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Erro ao finalizar fabricacao';
@@ -131,15 +123,10 @@ export const useAutomacaoStore = create<AutomacaoState>()(
       cancelarFabricacao: async (id: string) => {
         set({ loadingSalvar: true, error: null });
         try {
-          const { error } = await supabase
-            .from('vet_auto_fabricacoes')
-            .update({
-              status: 'cancelado' as StatusFabricacao,
-              hora_fim_fabricacao: new Date().toISOString(),
-            })
-            .eq('id', id);
-
-          if (error) throw error;
+          await dataService.update('vet_auto_fabricacoes', id, {
+            status: 'cancelado' as StatusFabricacao,
+            hora_fim_fabricacao: new Date().toISOString(),
+          });
           set({ fabricacaoAtiva: null, loadingSalvar: false });
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Erro ao cancelar fabricacao';
@@ -153,17 +140,12 @@ export const useAutomacaoStore = create<AutomacaoState>()(
       iniciarCarregamento: async (dados: VetAutoCarregamentoCreate) => {
         set({ loadingSalvar: true, error: null });
         try {
-          const { data, error } = await supabase
-            .from('vet_auto_carregamentos')
-            .insert({
-              ...dados,
-              status: 'carregando' as StatusCarregamento,
-            })
-            .select('*, vagao:misturador_vagao_id(*)')
-            .single();
-
-          if (error) throw error;
-          const carregamento = data as VetAutoCarregamento;
+          const data = await dataService.save('vet_auto_carregamentos', {
+            id: generateId(),
+            ...dados,
+            status: 'carregando' as StatusCarregamento,
+          });
+          const carregamento = data as unknown as VetAutoCarregamento;
           set({ carregamentoAtivo: carregamento, loadingSalvar: false });
           return carregamento;
         } catch (error) {
@@ -176,15 +158,10 @@ export const useAutomacaoStore = create<AutomacaoState>()(
       fecharCarregamento: async (id: string, pesoRetorno: number) => {
         set({ loadingSalvar: true, error: null });
         try {
-          const { error } = await supabase
-            .from('vet_auto_carregamentos')
-            .update({
-              status: 'fechado' as StatusCarregamento,
-              peso_balancao_retorno: pesoRetorno,
-            })
-            .eq('id', id);
-
-          if (error) throw error;
+          await dataService.update('vet_auto_carregamentos', id, {
+            status: 'fechado' as StatusCarregamento,
+            peso_balancao_retorno: pesoRetorno,
+          });
 
           const carregamento = get().carregamentoAtivo;
           set({ carregamentoAtivo: null, loadingSalvar: false });
@@ -203,12 +180,9 @@ export const useAutomacaoStore = create<AutomacaoState>()(
       cancelarCarregamento: async (id: string) => {
         set({ loadingSalvar: true, error: null });
         try {
-          const { error } = await supabase
-            .from('vet_auto_carregamentos')
-            .update({ status: 'cancelado' as StatusCarregamento })
-            .eq('id', id);
-
-          if (error) throw error;
+          await dataService.update('vet_auto_carregamentos', id, {
+            status: 'cancelado' as StatusCarregamento,
+          });
           set({ carregamentoAtivo: null, loadingSalvar: false });
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Erro ao cancelar carregamento';
@@ -222,14 +196,11 @@ export const useAutomacaoStore = create<AutomacaoState>()(
       registrarFornecimento: async (dados: VetAutoFornecidoCreate) => {
         set({ loadingSalvar: true, error: null });
         try {
-          const { data, error } = await supabase
-            .from('vet_auto_fornecidos')
-            .insert(dados)
-            .select('*, curral:curral_id(*)')
-            .single();
-
-          if (error) throw error;
-          const fornecimento = data as VetAutoFornecido;
+          const savedData = await dataService.save('vet_auto_fornecidos', {
+            id: generateId(),
+            ...dados,
+          });
+          const fornecimento = savedData as unknown as VetAutoFornecido;
 
           // Update previstos with realized amount
           if (dados.curral_id && dados.numero_trato) {
@@ -238,10 +209,9 @@ export const useAutomacaoStore = create<AutomacaoState>()(
               (p) => p.curral_id === dados.curral_id && p.numero_trato === dados.numero_trato,
             );
             if (previsto) {
-              await supabase
-                .from('vet_auto_previstos')
-                .update({ realizado_kg: previsto.realizado_kg + fornecimento.fornecido_kg })
-                .eq('id', previsto.id);
+              await dataService.update('vet_auto_previstos', previsto.id, {
+                realizado_kg: previsto.realizado_kg + fornecimento.fornecido_kg,
+              });
             }
           }
 
