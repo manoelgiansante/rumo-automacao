@@ -27,8 +27,20 @@ import Animated, {
 import { Colors, Spacing, FontSize, BorderRadius, Shadows, FontWeight } from '@/constants/theme';
 import { useFabricacao } from '@/hooks/useFabricacao';
 import type { IngredienteFabricacao } from '@/stores/fabricacaoStore';
+import { useAutomacaoStore } from '@/stores/automacaoStore';
+import { supabase } from '@/lib/supabase';
+import type { TipoUsoMisturador } from '@/types/automacao';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
+
+// ============================================
+// Operator type for PA operator selection
+// ============================================
+interface OperadorOption {
+  id: string;
+  nome: string;
+  tipo_usuario: string;
+}
 
 // ============================================
 // Types
@@ -293,10 +305,43 @@ export default function FabricacaoScreen() {
     },
   });
 
+  const { fazendaAtiva } = useAutomacaoStore();
+  const fazenda_id = fazendaAtiva?.fazenda_id ?? '';
+
   // Local state for recipe/vagao selection
   const [selectedReceita, setSelectedReceita] = useState<string>('');
   const [selectedVagao, setSelectedVagao] = useState<string>('');
   const [showReceitaPicker, setShowReceitaPicker] = useState(false);
+
+  // Tipo de uso (Estacionario / Rotomix / BatchBox)
+  const [tipoUso, setTipoUso] = useState<TipoUsoMisturador>('estacionario');
+
+  // Operador de Pa selection
+  const [operadores, setOperadores] = useState<OperadorOption[]>([]);
+  const [selectedOperadorPa, setSelectedOperadorPa] = useState<string>('');
+  const [loadingOperadores, setLoadingOperadores] = useState(false);
+
+  // Load operators on mount
+  useEffect(() => {
+    if (!fazenda_id) return;
+    let cancelled = false;
+    setLoadingOperadores(true);
+    supabase
+      .from('vet_auto_usuarios')
+      .select('id, nome, tipo_usuario')
+      .eq('fazenda_id', fazenda_id)
+      .eq('ativo', true)
+      .in('tipo_usuario', ['operador_pa', 'tratador', 'operador'])
+      .order('nome')
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (!error && data) {
+          setOperadores(data as OperadorOption[]);
+        }
+        setLoadingOperadores(false);
+      });
+    return () => { cancelled = true; };
+  }, [fazenda_id]);
 
   // Mock data - replace with real data from stores
   const receitas: ReceitaOption[] = [
@@ -348,11 +393,19 @@ export default function FabricacaoScreen() {
     if (!receita || !vagao) return;
 
     try {
-      await fab.iniciar('fazenda-id', receita.id, vagao.codigo, receita.total_kg);
+      await fab.iniciar(
+        fazenda_id || 'fazenda-id',
+        receita.id,
+        vagao.codigo,
+        receita.total_kg,
+        undefined,
+        tipoUso,
+        selectedOperadorPa || null,
+      );
     } catch (error) {
       Alert.alert('Erro', 'Nao foi possivel iniciar a fabricacao.');
     }
-  }, [selectedReceita, selectedVagao, fab]);
+  }, [selectedReceita, selectedVagao, fab, tipoUso, selectedOperadorPa, fazenda_id]);
 
   const handleProximoIngrediente = useCallback(() => {
     if (fab.ingredienteAtual) {
@@ -507,6 +560,85 @@ export default function FabricacaoScreen() {
                 ))}
               </View>
             </Animated.View>
+
+            {/* Tipo de Uso selector */}
+            <Animated.View entering={FadeInDown.delay(300).springify()}>
+              <Text style={styles.inputLabel}>Tipo de Uso</Text>
+              <View style={styles.chipsRow}>
+                {([
+                  { value: 'estacionario' as TipoUsoMisturador, label: 'Estacionario', icon: 'cube-outline' as const },
+                  { value: 'rotomix' as TipoUsoMisturador, label: 'Rotomix', icon: 'sync-outline' as const },
+                  { value: 'batchbox' as TipoUsoMisturador, label: 'BatchBox', icon: 'grid-outline' as const },
+                ]).map((opt) => (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[
+                      styles.selectorChip,
+                      tipoUso === opt.value && styles.chipSelected,
+                      tipoUso === opt.value && Shadows.sm,
+                    ]}
+                    onPress={() => setTipoUso(opt.value)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={opt.icon}
+                      size={16}
+                      color={tipoUso === opt.value ? Colors.textLight : Colors.textSecondary}
+                    />
+                    <Text style={[
+                      styles.selectorChipText,
+                      tipoUso === opt.value && styles.chipTextSelected,
+                    ]}>{opt.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {tipoUso === 'batchbox' && (
+                <Text style={styles.tipoUsoHint}>
+                  BatchBox: mistura externa - etapa de mistura sera pulada.
+                </Text>
+              )}
+            </Animated.View>
+
+            {/* Operador de Pa selector */}
+            <Animated.View entering={FadeInDown.delay(400).springify()}>
+              <Text style={styles.inputLabel}>Operador de Pa</Text>
+              {loadingOperadores ? (
+                <ActivityIndicator size="small" color={Colors.primary} style={{ alignSelf: 'flex-start', marginVertical: Spacing.sm }} />
+              ) : operadores.length === 0 ? (
+                <Text style={styles.operadorEmpty}>Nenhum operador disponivel</Text>
+              ) : (
+                <View style={styles.chipsRow}>
+                  {operadores.map((op) => (
+                    <TouchableOpacity
+                      key={op.id}
+                      style={[
+                        styles.selectorChip,
+                        selectedOperadorPa === op.id && styles.chipSelected,
+                        selectedOperadorPa === op.id && Shadows.sm,
+                      ]}
+                      onPress={() => setSelectedOperadorPa(selectedOperadorPa === op.id ? '' : op.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name="person-outline"
+                        size={16}
+                        color={selectedOperadorPa === op.id ? Colors.textLight : Colors.textSecondary}
+                      />
+                      <View>
+                        <Text style={[
+                          styles.selectorChipText,
+                          selectedOperadorPa === op.id && styles.chipTextSelected,
+                        ]}>{op.nome}</Text>
+                        <Text style={[
+                          styles.selectorChipSub,
+                          selectedOperadorPa === op.id && { color: 'rgba(255,255,255,0.7)' },
+                        ]}>{op.tipo_usuario === 'operador_pa' ? 'Op. Pa' : op.tipo_usuario}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </Animated.View>
           </>
         )}
 
@@ -525,6 +657,22 @@ export default function FabricacaoScreen() {
               </Text>
               <Text style={styles.currentIngredientPrevisto}>
                 Previsto: {fab.ingredienteAtual.pesoPrevisto.toFixed(1)} kg
+              </Text>
+            </View>
+          </Animated.View>
+        )}
+
+        {/* Troca de Ingrediente Countdown */}
+        {fab.emTrocaIngrediente && isAtiva && (
+          <Animated.View entering={FadeIn.duration(200)}>
+            <View style={[styles.trocaIngredienteCard, Shadows.md]}>
+              <Ionicons name="swap-horizontal-outline" size={32} color={Colors.warning} />
+              <Text style={styles.trocaIngredienteTitle}>TROCA DE INGREDIENTE</Text>
+              <Text style={styles.trocaIngredienteCountdown}>
+                {fab.trocaIngredienteCountdown}s
+              </Text>
+              <Text style={styles.trocaIngredienteHint}>
+                Aguarde para avancar ao proximo ingrediente...
               </Text>
             </View>
           </Animated.View>
@@ -955,4 +1103,51 @@ const styles = StyleSheet.create({
   actionButtonDanger: { backgroundColor: Colors.errorSubtle, borderWidth: 1.5, borderColor: Colors.error },
   actionButtonDisabled: { backgroundColor: Colors.disabled },
   actionButtonText: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.textLight },
+
+  // Troca de Ingrediente countdown
+  trocaIngredienteCard: {
+    backgroundColor: Colors.warningSubtle,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    marginTop: Spacing.md,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: Colors.warning,
+  },
+  trocaIngredienteTitle: {
+    fontSize: FontSize.lg,
+    fontWeight: FontWeight.extrabold,
+    color: Colors.warning,
+    marginTop: Spacing.sm,
+    letterSpacing: 1,
+  },
+  trocaIngredienteCountdown: {
+    fontSize: 48,
+    fontWeight: FontWeight.black,
+    color: Colors.warning,
+    fontVariant: ['tabular-nums'],
+    marginVertical: Spacing.xs,
+  },
+  trocaIngredienteHint: {
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+
+  // Tipo de Uso hint
+  tipoUsoHint: {
+    fontSize: FontSize.xs,
+    color: Colors.warning,
+    fontWeight: FontWeight.medium,
+    marginTop: Spacing.xs,
+    fontStyle: 'italic',
+  },
+
+  // Operador empty text
+  operadorEmpty: {
+    fontSize: FontSize.sm,
+    color: Colors.textTertiary,
+    fontStyle: 'italic',
+    marginVertical: Spacing.sm,
+  },
 });

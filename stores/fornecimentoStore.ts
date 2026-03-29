@@ -83,6 +83,10 @@ interface FornecimentoState {
   // Actions - Fornecimento
   identificarCurral: (tag: string) => VetAutoCurral | null;
   iniciarFornecimento: (curral: VetAutoCurral, pesoInicial: number, tagInicial: string | null) => void;
+  registrarTagInicial: (tag: string) => void;
+  confirmarPesoInicial: (peso: number) => void;
+  registrarTagFinal: (tag: string) => void;
+  confirmarPesoFinal: (peso: number) => void;
   registrarFornecimento: (pesoFinal: number, tagFinal: string | null, entradaManual?: boolean) => Promise<VetAutoFornecido>;
   cancelarFornecimentoAtual: () => void;
 
@@ -232,6 +236,13 @@ export const useFornecimentoStore = create<FornecimentoState>()(
           (p) => p.curral_id === curral.id && p.numero_trato === carregamentoAtivo?.numero_trato,
         ) ?? null;
 
+        // Determine initial status based on what data we have:
+        // - If tagInicial is provided, we already detected the initial tag -> pesando_inicial
+        // - Otherwise start at aguardando_tag_inicial
+        const initialStatus: FornecimentoEmAndamento['status'] = tagInicial
+          ? 'pesando_inicial'
+          : 'aguardando_tag_inicial';
+
         const fornecimentoAtual: FornecimentoEmAndamento = {
           curral,
           previsto,
@@ -242,7 +253,7 @@ export const useFornecimentoStore = create<FornecimentoState>()(
           tagFinal: null,
           horaInicio: new Date().toISOString(),
           horaFinal: null,
-          status: 'fornecendo',
+          status: initialStatus,
         };
 
         set({
@@ -252,6 +263,66 @@ export const useFornecimentoStore = create<FornecimentoState>()(
           tagInicial,
           pesoFinal: 0,
           tagFinal: null,
+        });
+      },
+
+      registrarTagInicial: (tag: string) => {
+        const { fornecimentoAtual } = get();
+        if (!fornecimentoAtual || fornecimentoAtual.status !== 'aguardando_tag_inicial') return;
+
+        set({
+          fornecimentoAtual: {
+            ...fornecimentoAtual,
+            tagInicial: tag,
+            status: 'pesando_inicial',
+          },
+          tagInicial: tag,
+        });
+      },
+
+      confirmarPesoInicial: (peso: number) => {
+        const { fornecimentoAtual } = get();
+        if (!fornecimentoAtual || fornecimentoAtual.status !== 'pesando_inicial') return;
+
+        set({
+          fornecimentoAtual: {
+            ...fornecimentoAtual,
+            pesoInicial: peso,
+            status: 'fornecendo',
+          },
+          pesoInicial: peso,
+        });
+      },
+
+      registrarTagFinal: (tag: string) => {
+        const { fornecimentoAtual } = get();
+        if (!fornecimentoAtual || fornecimentoAtual.status !== 'fornecendo') return;
+
+        set({
+          fornecimentoAtual: {
+            ...fornecimentoAtual,
+            tagFinal: tag,
+            status: 'pesando_final',
+          },
+          tagFinal: tag,
+        });
+      },
+
+      confirmarPesoFinal: (peso: number) => {
+        const { fornecimentoAtual } = get();
+        if (!fornecimentoAtual || fornecimentoAtual.status !== 'pesando_final') return;
+
+        const fornecidoKg = fornecimentoAtual.pesoInicial - peso;
+
+        set({
+          fornecimentoAtual: {
+            ...fornecimentoAtual,
+            pesoFinal: peso,
+            fornecidoKg,
+            horaFinal: new Date().toISOString(),
+            status: 'registrado',
+          },
+          pesoFinal: peso,
         });
       },
 
@@ -289,6 +360,7 @@ export const useFornecimentoStore = create<FornecimentoState>()(
             flag_rateio: false,
             peso_antigo: null,
             entrada_manual: entradaManual,
+            previsto_kg: fornecimentoAtual.previsto?.previsto_kg ?? null,
           };
 
           const { data, error } = await supabase

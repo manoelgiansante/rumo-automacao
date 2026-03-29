@@ -185,6 +185,7 @@ export async function registrarFornecimento(
     flag_rateio?: boolean;
     peso_rateado_kg?: number;
     entrada_manual?: boolean;
+    previsto_kg?: number | null;
   }
 ): Promise<VetAutoFornecimento> {
   const flag_rateio = options?.flag_rateio ?? false;
@@ -208,6 +209,7 @@ export async function registrarFornecimento(
       hora_final: new Date().toISOString(),
       flag_rateio,
       entrada_manual: options?.entrada_manual ?? false,
+      previsto_kg: options?.previsto_kg ?? null,
     })
     .select()
     .single();

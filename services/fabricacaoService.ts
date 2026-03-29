@@ -322,3 +322,66 @@ export async function cancelarFabricacao(
   if (error) throw new Error(`Erro ao cancelar fabricacao: ${error.message}`);
   return data as VetAutoFabricacao;
 }
+
+// ============================================
+// SOBRA (Leftover management)
+// ============================================
+
+/**
+ * Registra a quantidade de sobra de uma fabricacao
+ */
+export async function registrarSobra(
+  fabricacao_id: string,
+  sobra_kg: number
+): Promise<void> {
+  const { error } = await supabase
+    .from('vet_auto_fabricacoes')
+    .update({ total_sobra_carregado_kg: sobra_kg, updated_at: new Date().toISOString() })
+    .eq('id', fabricacao_id);
+  if (error) throw new Error(`Erro ao registrar sobra: ${error.message}`);
+}
+
+/**
+ * Busca fabricacoes com sobra disponivel (status processado e sobra > 0)
+ */
+export async function getFabricacoesComSobra(
+  fazenda_id: string
+): Promise<FabricacaoComDetalhes[]> {
+  const { data, error } = await supabase
+    .from('vet_auto_fabricacoes')
+    .select('*, receita:vet_auto_receitas!receita_id(id, nome)')
+    .eq('fazenda_id', fazenda_id)
+    .eq('status', 'processado')
+    .gt('total_sobra_carregado_kg', 0)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(`Erro ao buscar fabricacoes com sobra: ${error.message}`);
+  return (data ?? []) as FabricacaoComDetalhes[];
+}
+
+/**
+ * Vincula uma sobra de fabricacao anterior a uma nova fabricacao
+ */
+export async function vincularSobra(
+  nova_fabricacao_id: string,
+  sobra_fabricacao_id: string,
+  sobra_lote: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('vet_auto_fabricacoes')
+    .update({ lote_fabricacao_sobra: sobra_lote, updated_at: new Date().toISOString() })
+    .eq('id', nova_fabricacao_id);
+  if (error) throw new Error(`Erro ao vincular sobra: ${error.message}`);
+}
+
+/**
+ * Zera a sobra de uma fabricacao apos redistribuicao
+ */
+export async function zerarSobra(
+  fabricacao_id: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('vet_auto_fabricacoes')
+    .update({ total_sobra_carregado_kg: 0, updated_at: new Date().toISOString() })
+    .eq('id', fabricacao_id);
+  if (error) throw new Error(`Erro ao zerar sobra: ${error.message}`);
+}

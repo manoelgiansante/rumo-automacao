@@ -13,6 +13,7 @@ import type {
   StatusIngrediente,
   FlagManual,
   ScreenFabricar,
+  TipoUsoMisturador,
 } from '@/types/automacao';
 
 // ─── Derived types ───────────────────────────────────────────────────────────
@@ -30,6 +31,8 @@ export interface IngredienteFabricacao {
   pesoMaximo: number;
   /** Status do ingrediente */
   status: StatusIngrediente;
+  /** Hora de inicio da pesagem deste ingrediente */
+  horaInicio: string | null;
   /** Peso registrado (apos pesagem) */
   pesoRegistrado: number | null;
   /** Diferenca em kg */
@@ -71,6 +74,8 @@ interface FabricacaoState {
     codigoMisturador: number,
     totalPrevisto: number,
     numeroTrato?: number,
+    tipoUso?: TipoUsoMisturador,
+    operadorPaId?: string | null,
   ) => Promise<VetAutoFabricacao>;
   proximoIngrediente: () => void;
   registrarPeso: (pesoFinal: number, flagManual: FlagManual) => Promise<void>;
@@ -108,6 +113,7 @@ function calcularIngredientesFabricacao(
         pesoMinimo: pesoPrevisto - toleranciaKg,
         pesoMaximo: pesoPrevisto + toleranciaKg,
         status: 'espera' as StatusIngrediente,
+        horaInicio: null,
         pesoRegistrado: null,
         diferencaKg: null,
       };
@@ -147,7 +153,7 @@ export const useFabricacaoStore = create<FabricacaoState>()(
 
       // ── Flow ────────────────────────────────────────────────────────────
 
-      iniciar: async (fazendaId, receitaId, codigoMisturador, totalPrevisto, numeroTrato) => {
+      iniciar: async (fazendaId, receitaId, codigoMisturador, totalPrevisto, numeroTrato, tipoUso, operadorPaId) => {
         set({ loading: true, error: null });
         try {
           // Fetch receita and ingredients
@@ -177,7 +183,7 @@ export const useFabricacaoStore = create<FabricacaoState>()(
             lote_fabricacao: gerarLoteFabricacao(),
             receita_id: receitaId,
             usuario_id: null,
-            operador_pa_id: null,
+            operador_pa_id: operadorPaId ?? null,
             codigo_misturador: codigoMisturador,
             numero_lote_animais: null,
             numero_trato: numeroTrato ?? null,
@@ -187,12 +193,12 @@ export const useFabricacaoStore = create<FabricacaoState>()(
             total_kg_mn_fabricada: 0,
             total_kg_mn_previsto: totalPrevisto,
             total_cabeca: null,
-            tipo_uso: 'estacionario',
+            tipo_uso: tipoUso ?? 'estacionario',
             total_perda_kg: 0,
             total_sobra_carregado_kg: 0,
             lote_fabricacao_sobra: null,
             flag_automation: false,
-            flag_batchbox: false,
+            flag_batchbox: (tipoUso ?? 'estacionario') === 'batchbox',
             ordem_producao_id: null,
             status: 'processando',
           };
@@ -204,6 +210,10 @@ export const useFabricacaoStore = create<FabricacaoState>()(
             .single();
 
           if (error) throw error;
+
+          // For BatchBox mode, skip mixing timer (mixes externally)
+          const isBatchbox = (tipoUso ?? 'estacionario') === 'batchbox';
+          const tempoMisturaFinal = isBatchbox ? 0 : (receita.tempo_mistura ?? 0);
 
           set({
             fabricacaoAtiva: fabricacao as VetAutoFabricacao,
@@ -218,8 +228,8 @@ export const useFabricacaoStore = create<FabricacaoState>()(
             status: 'processando',
             screen: 'fabricar',
             progresso: 0,
-            tempoMistura: receita.tempo_mistura ?? 0,
-            tempoMisturaRestante: receita.tempo_mistura ?? 0,
+            tempoMistura: tempoMisturaFinal,
+            tempoMisturaRestante: tempoMisturaFinal,
             loading: false,
           });
 
@@ -241,7 +251,8 @@ export const useFabricacaoStore = create<FabricacaoState>()(
           return;
         }
 
-        const nextIngrediente = { ...ingredientes[nextIndex], status: 'processando' as StatusIngrediente };
+        const horaInicioIngrediente = new Date().toISOString();
+        const nextIngrediente = { ...ingredientes[nextIndex], status: 'processando' as StatusIngrediente, horaInicio: horaInicioIngrediente };
         const updatedIngredientes = [...ingredientes];
         updatedIngredientes[nextIndex] = nextIngrediente;
 
@@ -274,7 +285,7 @@ export const useFabricacaoStore = create<FabricacaoState>()(
             total_kg_mn_fabricada: pesoRegistrado,
             total_kg_mn_previsto: ingredienteAtual.pesoPrevisto,
             materia_seca_ingrediente: ingredienteAtual.receitaIngrediente.ingrediente?.materia_seca ?? null,
-            hora_inicio: null,
+            hora_inicio: ingredienteAtual.horaInicio ?? new Date().toISOString(),
             hora_fim: new Date().toISOString(),
             total_diferenca_percentual: diferencaPerc,
             total_diferenca_kg: diferencaKg,

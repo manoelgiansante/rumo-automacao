@@ -3,12 +3,13 @@
  * Gerencia o fluxo completo de pesagem de ingredientes
  */
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { Vibration, Platform } from 'react-native';
 import { useHardware, type UseHardwareOptions } from './useHardware';
 import { useFabricacaoStore, type IngredienteFabricacao } from '@/stores/fabricacaoStore';
 import type { LeituraPeso } from '@/services/hardware';
 import type { FlagManual, StatusIngrediente } from '@/types/automacao';
+import { supabase } from '@/lib/supabase';
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 
@@ -48,7 +49,13 @@ export function useFabricacao(options: UseFabricacaoOptions = {}) {
   // Timer refs
   const autoAvancoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const misturaTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const trocaIngredienteTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dentroToleranciaRef = useRef(false);
+
+  // Tempo troca ingrediente state
+  const [trocaIngredienteCountdown, setTrocaIngredienteCountdown] = useState(0);
+  const [emTrocaIngrediente, setEmTrocaIngrediente] = useState(false);
+  const tempoTrocaIngredienteRef = useRef(0);
 
   // Hardware hook
   const hardware = useHardware({
@@ -67,6 +74,30 @@ export function useFabricacao(options: UseFabricacaoOptions = {}) {
 
   // Store
   const store = useFabricacaoStore();
+
+  // ── Load tempo_troca_ingrediente from configuracao_misturadores ──
+
+  useEffect(() => {
+    const fabricacao = useFabricacaoStore.getState().fabricacaoAtiva;
+    if (!fabricacao) {
+      tempoTrocaIngredienteRef.current = 0;
+      return;
+    }
+
+    const codigoMisturador = (fabricacao as any).codigo_misturador;
+    const fazendaId = fabricacao.fazenda_id;
+    if (!codigoMisturador || !fazendaId) return;
+
+    supabase
+      .from('vet_auto_configuracao_misturadores')
+      .select('tempo_troca_ingrediente')
+      .eq('fazenda_id', fazendaId)
+      .eq('codigo_misturador', codigoMisturador)
+      .maybeSingle()
+      .then(({ data }) => {
+        tempoTrocaIngredienteRef.current = data?.tempo_troca_ingrediente ?? 0;
+      });
+  }, [store.fabricacaoAtiva?.id]);
 
   // ── Tolerance checking ──────────────────────────────────────────────
 
@@ -116,6 +147,53 @@ export function useFabricacao(options: UseFabricacaoOptions = {}) {
     }
   }, [autoAvancar, tempoAutoAvancoMs, vibrarAlerta]);
 
+  // ── Ingredient change countdown ───────────────────────────────────
+
+  const iniciarTrocaIngrediente = useCallback((onComplete: () => void) => {
+    const tempoTroca = tempoTrocaIngredienteRef.current;
+
+    // If no tempo_troca or zero, advance immediately
+    if (!tempoTroca || tempoTroca <= 0) {
+      onComplete();
+      return;
+    }
+
+    setEmTrocaIngrediente(true);
+    let restante = tempoTroca;
+    setTrocaIngredienteCountdown(restante);
+
+    // Show on LED display
+    if (hardware.conectado) {
+      hardware.escreverDisplay([
+        { line: 1, txt: 'TROCA DE INGREDIENTE' },
+        { line: 2, txt: `${restante}s` },
+      ]);
+    }
+
+    trocaIngredienteTimerRef.current = setInterval(() => {
+      restante -= 1;
+      setTrocaIngredienteCountdown(restante);
+
+      // Update LED display
+      if (hardware.conectado) {
+        hardware.escreverDisplay([
+          { line: 1, txt: 'TROCA DE INGREDIENTE' },
+          { line: 2, txt: `${restante}s` },
+        ]);
+      }
+
+      if (restante <= 0) {
+        if (trocaIngredienteTimerRef.current) {
+          clearInterval(trocaIngredienteTimerRef.current);
+          trocaIngredienteTimerRef.current = null;
+        }
+        setEmTrocaIngrediente(false);
+        setTrocaIngredienteCountdown(0);
+        onComplete();
+      }
+    }, 1000);
+  }, [hardware]);
+
   // ── Ingredient flow ─────────────────────────────────────────────────
 
   const registrarEAvancar = useCallback(async (pesoFinal: number, flagManual: FlagManual) => {
@@ -138,17 +216,29 @@ export function useFabricacao(options: UseFabricacaoOptions = {}) {
         ]);
       }
 
-      // Move to next ingredient
-      currentStore.proximoIngrediente();
+      // Check if there are more ingredients before starting countdown
+      const stateAfterRegister = useFabricacaoStore.getState();
+      const nextIndex = stateAfterRegister.ingredienteAtualIndex + 1;
+      const hasMoreIngredients = nextIndex < stateAfterRegister.ingredientes.length;
 
-      const updatedState = useFabricacaoStore.getState();
-      if (updatedState.screen === 'misturar') {
-        optionsRef.current.onTodosIngredientesFinalizados?.();
+      if (hasMoreIngredients) {
+        // Start countdown before advancing to next ingredient
+        iniciarTrocaIngrediente(() => {
+          const latestStore = useFabricacaoStore.getState();
+          latestStore.proximoIngrediente();
+        });
+      } else {
+        // No more ingredients, go to mixing
+        currentStore.proximoIngrediente();
+        const updatedState = useFabricacaoStore.getState();
+        if (updatedState.screen === 'misturar') {
+          optionsRef.current.onTodosIngredientesFinalizados?.();
+        }
       }
     } catch (error) {
       console.error('Erro ao registrar peso:', error);
     }
-  }, [hardware]);
+  }, [hardware, iniciarTrocaIngrediente]);
 
   const avancarManual = useCallback((pesoFinal: number) => {
     return registrarEAvancar(pesoFinal, 'manual');
@@ -227,6 +317,7 @@ export function useFabricacao(options: UseFabricacaoOptions = {}) {
     return () => {
       if (autoAvancoTimerRef.current) clearTimeout(autoAvancoTimerRef.current);
       if (misturaTimerRef.current) clearInterval(misturaTimerRef.current);
+      if (trocaIngredienteTimerRef.current) clearInterval(trocaIngredienteTimerRef.current);
     };
   }, []);
 
@@ -248,6 +339,7 @@ export function useFabricacao(options: UseFabricacaoOptions = {}) {
     // Fabricacao state
     fabricacaoAtiva: store.fabricacaoAtiva,
     ingredienteAtual: store.ingredienteAtual,
+    ingredienteAtualIndex: store.ingredienteAtualIndex,
     ingredientes: store.ingredientes,
     receita: store.receita,
     pesoPrevisto: store.pesoPrevisto,
@@ -262,6 +354,10 @@ export function useFabricacao(options: UseFabricacaoOptions = {}) {
     loading: store.loading,
     loadingSalvar: store.loadingSalvar,
     error: store.error,
+
+    // Troca de ingrediente state
+    emTrocaIngrediente,
+    trocaIngredienteCountdown,
 
     // Computed
     dentroTolerancia: dentroToleranciaRef.current,

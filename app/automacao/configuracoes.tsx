@@ -225,6 +225,14 @@ export default function ConfiguracoesScreen() {
   // Safe Points
   const [usaSafePoints, setUsaSafePoints] = useState(false);
 
+  // CR1 Config Flags
+  const [habilitaOcorrenciaParada, setHabilitaOcorrenciaParada] = useState(false);
+  const [confirmarFornecimento, setConfirmarFornecimento] = useState(false);
+  const [aberturaCurralManual, setAberturaCurralManual] = useState(false);
+  const [valorCorteFornecimento, setValorCorteFornecimento] = useState('0');
+  const [tempoIngredienteLed, setTempoIngredienteLed] = useState('3');
+  const [velocidadeLed, setVelocidadeLed] = useState('5');
+
   // Logging & Validation
   const [enableLogPeso, setEnableLogPeso] = useState(false);
   const [enableLogFornecimento, setEnableLogFornecimento] = useState(false);
@@ -289,6 +297,12 @@ export default function ConfiguracoesScreen() {
         setIntensidadeLed(cfg.intensidade_led ?? 5);
         setTipoSync(cfg.tipo_sincronismo ?? 'online');
         setSyncUrl(cfg.url_web_service ?? '');
+        setHabilitaOcorrenciaParada(cfg.habilita_ocorrencia_parada ?? false);
+        setConfirmarFornecimento(cfg.confirmar_fornecimento ?? false);
+        setAberturaCurralManual(cfg.abertura_curral_manual ?? false);
+        setValorCorteFornecimento(String(cfg.valor_corte_fornecimento ?? 0));
+        setTempoIngredienteLed(String(cfg.tempo_ingrediente_led ?? 3));
+        setVelocidadeLed(String(cfg.velocidade_led ?? 5));
         // balanca/protocolo fields are stored per-misturador in vet_auto_configuracao_misturadores
         // but we show them here for convenience
       }
@@ -356,6 +370,12 @@ export default function ConfiguracoesScreen() {
         intensidade_led: intensidadeLed,
         tipo_sincronismo: tipoSync,
         url_web_service: syncUrl || null,
+        habilita_ocorrencia_parada: habilitaOcorrenciaParada,
+        confirmar_fornecimento: confirmarFornecimento,
+        abertura_curral_manual: aberturaCurralManual,
+        valor_corte_fornecimento: parseFloat(valorCorteFornecimento) || 0,
+        tempo_ingrediente_led: parseInt(tempoIngredienteLed, 10) || 3,
+        velocidade_led: parseInt(velocidadeLed, 10) || 5,
         updated_at: new Date().toISOString(),
       };
 
@@ -419,6 +439,8 @@ export default function ConfiguracoesScreen() {
     rfidTamanhoTag, rfidTimeout, balancaFaixaEstabilidade, minTimeEstabilidade,
     validateTipoReceita, enableLogPeso, enableLogFornecimento,
     usaV10, intensidadeLed, tipoSync, syncUrl,
+    habilitaOcorrenciaParada, confirmarFornecimento, aberturaCurralManual,
+    valorCorteFornecimento, tempoIngredienteLed, velocidadeLed,
   ]);
 
   let animIndex = 0;
@@ -584,6 +606,36 @@ export default function ConfiguracoesScreen() {
             </TouchableOpacity>
           </Animated.View>
         )}
+
+        {/* ── Operacao ── */}
+        <SectionHeader icon="settings-outline" title="Operacao" color={Colors.secondary} index={animIndex++} />
+        <ToggleRow
+          icon="alert-outline"
+          label="Ocorrencia de Parada"
+          description="Habilitar registro de ocorrencias de parada"
+          value={habilitaOcorrenciaParada}
+          onToggle={setHabilitaOcorrenciaParada}
+          index={animIndex++}
+        />
+        <ToggleRow
+          icon="checkmark-circle-outline"
+          label="Confirmar Fornecimento"
+          description="Exigir confirmacao antes de registrar fornecimento"
+          value={confirmarFornecimento}
+          onToggle={setConfirmarFornecimento}
+          index={animIndex++}
+        />
+        <ToggleRow
+          icon="grid-outline"
+          label="Abertura Curral Manual"
+          description="Permitir selecao manual de curral"
+          value={aberturaCurralManual}
+          onToggle={setAberturaCurralManual}
+          index={animIndex++}
+        />
+        <ConfigInputRow label="Corte Fornecimento" value={valorCorteFornecimento} onChangeText={setValorCorteFornecimento} placeholder="0" keyboardType="numeric" suffix="kg" index={animIndex++} />
+        <ConfigInputRow label="Tempo Ingrediente LED" value={tempoIngredienteLed} onChangeText={setTempoIngredienteLed} placeholder="3" keyboardType="numeric" suffix="seg" index={animIndex++} />
+        <ConfigInputRow label="Velocidade LED" value={velocidadeLed} onChangeText={setVelocidadeLed} placeholder="5" keyboardType="numeric" suffix="" index={animIndex++} />
 
         {/* ── Logging & Validacao ── */}
         <SectionHeader icon="document-text-outline" title="Logs e Validacao" color={Colors.textSecondary} index={animIndex++} />
